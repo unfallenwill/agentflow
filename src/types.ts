@@ -9,6 +9,8 @@ export interface AgentOpts {
   /** JSON Schema → passed to SDK outputFormat for structured output */
   schema?: Record<string, unknown>
   model?: string
+  /** Max retry attempts for transient errors (429, network). Default: 2 */
+  maxRetries?: number
 }
 
 /** The `budget` object exposed as a script global */

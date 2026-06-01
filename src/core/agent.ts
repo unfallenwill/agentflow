@@ -6,8 +6,118 @@ import type { AgentOpts } from '../types.js'
 /** Default timeout for a single agent call (ms) */
 const DEFAULT_AGENT_TIMEOUT_MS = 120_000
 
+/** Default max retry attempts for transient errors */
+const DEFAULT_MAX_RETRIES = 2
+
+/** Base delay for exponential backoff (ms) */
+const RETRY_BASE_DELAY_MS = 1_000
+
+/** Cap for backoff delay (ms) */
+const RETRY_MAX_DELAY_MS = 30_000
+
 /** Internal discriminated return from the query IIFE */
 type QueryOutput = { ok: true; value: ResultMessage | null } | { ok: false; error: string }
+
+/** Query execution result including retry metadata */
+interface QueryAttempt {
+  output: QueryOutput
+  /** Whether the error is retryable (429, network) vs fatal (abort, timeout) */
+  retryable: boolean
+}
+
+/**
+ * Check if an error message indicates a retryable transient failure.
+ * Matches rate limiting (429) and common network error patterns.
+ */
+function isRetryableError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return (
+    lower.includes('429') ||
+    lower.includes('rate limit') ||
+    lower.includes('too many requests') ||
+    lower.includes('econnreset') ||
+    lower.includes('econnrefused') ||
+    lower.includes('etimedout') ||
+    lower.includes('socket hang up') ||
+    lower.includes('network error') ||
+    lower.includes('fetch failed')
+  )
+}
+
+/**
+ * Compute exponential backoff delay with jitter.
+ * delay = min(base * 2^attempt, maxDelay) * random(0.5, 1.0)
+ */
+function backoffDelay(attempt: number): number {
+  const base = RETRY_BASE_DELAY_MS * Math.pow(2, attempt)
+  const capped = Math.min(base, RETRY_MAX_DELAY_MS)
+  const jitter = 0.5 + Math.random() * 0.5
+  return Math.floor(capped * jitter)
+}
+
+/**
+ * Execute a single SDK query attempt with timeout protection.
+ */
+async function executeQueryAttempt(
+  prompt: string,
+  sdkOpts: Options,
+  controller: AbortController,
+  timeoutMs: number,
+): Promise<QueryAttempt> {
+  const TIMEOUT_SENTINEL = Symbol('timeout')
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+
+  const q = query({ prompt, options: { ...sdkOpts, abortController: controller } })
+
+  const timeoutPromise = new Promise<typeof TIMEOUT_SENTINEL>((resolve) => {
+    timeoutId = setTimeout(() => {
+      controller.abort()
+      resolve(TIMEOUT_SENTINEL)
+    }, timeoutMs)
+  })
+
+  const queryPromise = (async (): Promise<QueryOutput> => {
+    try {
+      let resultMsg: ResultMessage | null = null
+      for await (const message of q) {
+        if (message.type === 'result') {
+          resultMsg = message as ResultMessage
+        }
+      }
+      return { ok: true, value: resultMsg }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      return { ok: false, error: msg }
+    }
+  })()
+
+  const raceResult = await Promise.race([queryPromise, timeoutPromise])
+
+  clearTimeout(timeoutId)
+  timeoutId = undefined
+
+  // Timeout is never retryable
+  if (raceResult === TIMEOUT_SENTINEL) {
+    try {
+      q.interrupt()
+    } catch {
+      /* best effort */
+    }
+    try {
+      q.return()
+    } catch {
+      /* best effort */
+    }
+    return {
+      output: { ok: false, error: `Agent timed out after ${timeoutMs / 1000}s` },
+      retryable: false,
+    }
+  }
+
+  const output = raceResult as QueryOutput
+  const retryable = !output.ok && isRetryableError(output.error)
+  return { output, retryable }
+}
 
 /**
  * Execute a single agent call via the SDK.
@@ -17,6 +127,7 @@ type QueryOutput = { ok: true; value: ResultMessage | null } | { ok: false; erro
  * - Tracks spending via BudgetTracker.
  * - Returns `null` on any failure (soft failure pattern).
  * - Times out if the SDK process hangs.
+ * - Retries transient errors (429, network) with exponential backoff.
  */
 export async function executeAgent<T = unknown>(
   prompt: string,
@@ -25,13 +136,13 @@ export async function executeAgent<T = unknown>(
 ): Promise<T | null> {
   const label = opts?.label
   const phase = opts?.phase
+  const maxRetries = opts?.maxRetries ?? DEFAULT_MAX_RETRIES
 
   ctx.bus.emit({ kind: 'agent_start', label, phase })
 
   const release = await ctx.semaphore.acquire()
   const startTime = Date.now()
 
-  // Create a per-call AbortController for timeout + signal forwarding
   const controller = new AbortController()
   let timeoutId: ReturnType<typeof setTimeout> | undefined
 
@@ -72,72 +183,60 @@ export async function executeAgent<T = unknown>(
       }
     }
 
-    // Execute query with timeout protection.
-    // SDK's AsyncGenerator may hang on errors (e.g., 429),
-    // so we race it against a timeout that resolves to a sentinel.
-    const TIMEOUT_SENTINEL = Symbol('timeout')
-    const q = query({ prompt, options: sdkOpts })
+    // ── Execute with retry loop ────────────────────────────────────────
 
-    const timeoutPromise = new Promise<typeof TIMEOUT_SENTINEL>((resolve) => {
-      timeoutId = setTimeout(() => {
-        controller.abort()
-        resolve(TIMEOUT_SENTINEL)
-      }, DEFAULT_AGENT_TIMEOUT_MS)
-    })
+    let lastError = ''
+    let queryOutput: QueryOutput | undefined
 
-    const queryPromise = (async (): Promise<QueryOutput> => {
-      try {
-        let resultMsg: ResultMessage | null = null
-        for await (const message of q) {
-          if (message.type === 'result') {
-            resultMsg = message as ResultMessage
-          }
-        }
-        return { ok: true, value: resultMsg }
-      } catch (e: unknown) {
-        // SDK throws ExecutionError (e.g. 429), AbortError, etc.
-        // Propagate the error message via the discriminated union.
-        const msg = e instanceof Error ? e.message : String(e)
-        return { ok: false, error: msg }
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // Check if externally aborted before retrying
+      if (controller.signal.aborted) {
+        ctx.bus.emit({ kind: 'agent_error', label, error: 'Agent aborted' })
+        return null
       }
-    })()
 
-    const raceResult = await Promise.race([queryPromise, timeoutPromise])
+      const attemptResult = await executeQueryAttempt(
+        prompt,
+        sdkOpts,
+        controller,
+        DEFAULT_AGENT_TIMEOUT_MS,
+      )
+      queryOutput = attemptResult.output
 
-    // Clear timeout — query or timeout finished
-    clearTimeout(timeoutId)
-    timeoutId = undefined
-
-    // Handle timeout
-    if (raceResult === TIMEOUT_SENTINEL) {
-      ctx.bus.emit({
-        kind: 'agent_error',
-        label,
-        error: `Agent timed out after ${DEFAULT_AGENT_TIMEOUT_MS / 1000}s`,
-      })
-      try {
-        q.interrupt()
-      } catch {
-        /* best effort */
+      // Success or non-retryable error → exit loop
+      if (queryOutput.ok || !attemptResult.retryable) {
+        break
       }
-      try {
-        q.return()
-      } catch {
-        /* best effort */
+
+      // Retryable error → retry if attempts remain
+      lastError = queryOutput.error
+      if (attempt < maxRetries) {
+        const delay = backoffDelay(attempt)
+        ctx.bus.emit({
+          kind: 'agent_error',
+          label,
+          error: `${lastError} (retry ${attempt + 1}/${maxRetries} in ${delay}ms)`,
+        })
+        await new Promise((resolve) => {
+          timeoutId = setTimeout(resolve, delay)
+        })
+        timeoutId = undefined
       }
+    }
+
+    // ── Handle final result ────────────────────────────────────────────
+
+    // queryOutput is always set by the loop (at least one iteration runs)
+    // but TypeScript can't prove that — use a fallback for type safety
+    const finalOutput = queryOutput ?? { ok: false, error: 'No query output' }
+
+    // Handle query error
+    if (!finalOutput.ok) {
+      ctx.bus.emit({ kind: 'agent_error', label, error: finalOutput.error })
       return null
     }
 
-    // raceResult is now QueryOutput (timeout sentinel already handled above)
-    const queryOutput = raceResult as QueryOutput
-
-    // Handle query error (e.g. 429 ExecutionError caught by IIFE)
-    if (!queryOutput.ok) {
-      ctx.bus.emit({ kind: 'agent_error', label, error: queryOutput.error })
-      return null
-    }
-
-    const resultMsg = queryOutput.value
+    const resultMsg = finalOutput.value
 
     // No result at all
     if (resultMsg === null) {

@@ -282,7 +282,7 @@ describe('executeAgent', () => {
 
   // ── (l) Signal already aborted ───────────────────────────────────
 
-  it('aborts controller when signal is already aborted', async () => {
+  it('returns null and emits agent_error when signal is already aborted', async () => {
     const bus = new EngineEventBus()
     const budget = new BudgetTracker(null, bus)
     const semaphore = new Semaphore(10)
@@ -290,12 +290,15 @@ describe('executeAgent', () => {
     controller.abort()
     const ctx: AgentContext = { bus, budget, semaphore, signal: controller.signal }
 
-    // The function passes an AbortController to the SDK. When ctx.signal is
-    // already aborted, the per-call controller is immediately aborted too.
-    // Our mock doesn't react to abort, so the call succeeds — but we can
-    // verify the abortController that was passed in is aborted.
-    await executeAgent('test', undefined, ctx)
-    expect(capturedSdkOpts?.abortController?.signal.aborted).toBe(true)
+    const events = collectEvents(bus)
+    const result = await executeAgent('test', undefined, ctx)
+
+    expect(result).toBeNull()
+    expect(events.find((e) => e.kind === 'agent_error')).toEqual({
+      kind: 'agent_error',
+      label: undefined,
+      error: 'Agent aborted',
+    })
   })
 
   // ── (m) Signal forwarded ─────────────────────────────────────────
@@ -338,6 +341,97 @@ describe('executeAgent', () => {
   })
 
   // ── (p) Label and phase ──────────────────────────────────────────
+
+  // ── Retry tests ────────────────────────────────────────────────────
+
+  it('retries on 429 rate limit error and succeeds on second attempt', async () => {
+    let callCount = 0
+    queryMock.mockImplementation(() => {
+      callCount++
+      if (callCount === 1) {
+        const iterator = {
+          async *[Symbol.asyncIterator]() {
+            throw new Error('429 rate limit exceeded')
+          },
+        }
+        return Object.assign(iterator, { interrupt: vi.fn(), return: vi.fn() })
+      }
+      return createMockQuery([successResult()])
+    })
+
+    const ctx = makeContext()
+    const result = await executeAgent<{ value: number }>('test', { maxRetries: 2 }, ctx)
+    expect(result).toEqual({ value: 42 })
+    expect(callCount).toBe(2)
+  })
+
+  it('does not retry on non-retryable errors', async () => {
+    let callCount = 0
+    queryMock.mockImplementation(() => {
+      callCount++
+      const iterator = {
+        async *[Symbol.asyncIterator]() {
+          throw new Error('Authentication failed')
+        },
+      }
+      return Object.assign(iterator, { interrupt: vi.fn(), return: vi.fn() })
+    })
+
+    const ctx = makeContext()
+    const events = collectEvents(ctx.bus)
+    const result = await executeAgent('test', { maxRetries: 3 }, ctx)
+
+    expect(result).toBeNull()
+    expect(callCount).toBe(1)
+    const errorEvents = events.filter((e) => e.kind === 'agent_error')
+    expect(errorEvents.length).toBeGreaterThanOrEqual(1)
+    expect(errorEvents[errorEvents.length - 1]?.error).toBe('Authentication failed')
+  })
+
+  it('exhausts retries and returns null', async () => {
+    let callCount = 0
+    queryMock.mockImplementation(() => {
+      callCount++
+      const iterator = {
+        async *[Symbol.asyncIterator]() {
+          throw new Error('429 too many requests')
+        },
+      }
+      return Object.assign(iterator, { interrupt: vi.fn(), return: vi.fn() })
+    })
+
+    const ctx = makeContext()
+    const events = collectEvents(ctx.bus)
+    const result = await executeAgent('test', { maxRetries: 2 }, ctx)
+
+    expect(result).toBeNull()
+    expect(callCount).toBe(3) // initial + 2 retries
+    // Should have retry messages + final error
+    const errorEvents = events.filter((e) => e.kind === 'agent_error')
+    expect(errorEvents.length).toBe(3) // 2 retry warnings + 1 final error
+    expect(errorEvents[0]?.error).toContain('retry 1/2')
+    expect(errorEvents[1]?.error).toContain('retry 2/2')
+    expect(errorEvents[2]?.error).toContain('429')
+  })
+
+  it('respects maxRetries: 0 (no retry)', async () => {
+    let callCount = 0
+    queryMock.mockImplementation(() => {
+      callCount++
+      const iterator = {
+        async *[Symbol.asyncIterator]() {
+          throw new Error('429 rate limited')
+        },
+      }
+      return Object.assign(iterator, { interrupt: vi.fn(), return: vi.fn() })
+    })
+
+    const ctx = makeContext()
+    const result = await executeAgent('test', { maxRetries: 0 }, ctx)
+
+    expect(result).toBeNull()
+    expect(callCount).toBe(1) // no retry
+  })
 
   it('emits agent_start with label and phase from opts', async () => {
     const ctx = makeContext()
