@@ -8,14 +8,12 @@
  * const r = ok(42);          // { ok: true, value: 42 }
  * const e = err(new Error('boom')); // { ok: false, error: Error }
  */
-export type Result<T, E = Error> =
-  | { ok: true; value: T }
-  | { ok: false; error: E };
+export type Result<T, E = Error> = { ok: true; value: T } | { ok: false; error: E }
 
 export function ok<T>(value: T): Result<T, never> {
-  return { ok: true, value };
+  return { ok: true, value }
 }
 
 export function err<E>(error: E): Result<never, E> {
-  return { ok: false, error };
+  return { ok: false, error }
 }

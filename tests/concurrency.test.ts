@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { Semaphore, parallelExecute } from '../src/concurrency.js'
+import { Semaphore } from '../src/utils/semaphore.js'
+import { parallelExecute } from '../src/utils/parallel.js'
 
 describe('Semaphore', () => {
   it('allows up to max concurrent acquires', async () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ok, err } from '../src/result.js'
+import { ok, err } from '../src/utils/result.js'
 
 describe('result', () => {
   it('ok() returns ok variant', () => {

@@ -1,7 +1,4 @@
-import type { Result } from './result.js'
-import type { Semaphore } from './concurrency.js'
-import type { BudgetTracker } from './budget.js'
-import type { EngineEventBus } from './events.js'
+import type { Result } from './utils/result.js'
 
 // ── Script-facing types (globals injected into workflow scripts) ─────
 
@@ -47,6 +44,15 @@ export interface ScriptMeta {
 
 // ── Engine configuration ──────────────────────────────────────────────
 
+type PermissionMode =
+  | 'default'
+  | 'acceptEdits'
+  | 'bypassPermissions'
+  | 'plan'
+  | 'delegate'
+  | 'dontAsk'
+  | 'fullAccess'
+
 export interface EngineOptions {
   /** Path to the workflow script file */
   scriptPath: string
@@ -66,15 +72,6 @@ export interface EngineOptions {
   signal?: AbortSignal
 }
 
-type PermissionMode =
-  | 'default'
-  | 'acceptEdits'
-  | 'bypassPermissions'
-  | 'plan'
-  | 'delegate'
-  | 'dontAsk'
-  | 'fullAccess'
-
 // ── Engine output ─────────────────────────────────────────────────────
 
 export interface EngineResult {
@@ -88,9 +85,9 @@ export interface EngineResult {
 // ── Internal context for agent adapter ────────────────────────────────
 
 export interface AgentContext {
-  semaphore: Semaphore
-  budget: BudgetTracker
-  bus: EngineEventBus
+  semaphore: { acquire(): Promise<() => void> }
+  budget: { record(costUsd: number): boolean; spent(): number; remaining(): number | null }
+  bus: { on(handler: EngineEventHandler): () => void; emit(event: EngineEvent): void }
   cwd?: string | undefined
   defaultModel?: string | undefined
   permissionMode?: PermissionMode | undefined

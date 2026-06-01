@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { Engine } from '../src/engine.js'
+import { Engine } from '../src/core/engine.js'
 import { writeFile, mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 

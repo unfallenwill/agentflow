@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { AgentContext, AgentOpts } from '../src/types.js'
 import type { Options, ResultMessage } from '@tencent-ai/agent-sdk'
-import { Semaphore } from '../src/concurrency.js'
-import { BudgetTracker } from '../src/budget.js'
-import { EngineEventBus } from '../src/events.js'
-import { executeAgent } from '../src/agent.js'
+import { Semaphore } from '../src/utils/semaphore.js'
+import { BudgetTracker } from '../src/core/budget.js'
+import { EngineEventBus } from '../src/core/events.js'
+import { executeAgent } from '../src/core/agent.js'
 
 // ── Mock the SDK ──────────────────────────────────────────────────────
 

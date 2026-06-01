@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { BudgetTracker } from '../src/budget.js'
-import { EngineEventBus } from '../src/events.js'
+import { BudgetTracker } from '../src/core/budget.js'
+import { EngineEventBus } from '../src/core/events.js'
 
 describe('BudgetTracker', () => {
   it('tracks cumulative spending', () => {

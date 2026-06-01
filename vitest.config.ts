@@ -14,31 +14,37 @@ export default defineConfig({
         branches: 80,
         functions: 80,
         lines: 80,
-        '**/src/result.ts': {
+        '**/src/utils/result.ts': {
           statements: 90,
           branches: 90,
           functions: 90,
           lines: 90,
         },
-        '**/src/concurrency.ts': {
+        '**/src/utils/semaphore.ts': {
           statements: 90,
           branches: 90,
           functions: 90,
           lines: 90,
         },
-        '**/src/pipeline.ts': {
+        '**/src/utils/parallel.ts': {
           statements: 90,
           branches: 90,
           functions: 90,
           lines: 90,
         },
-        '**/src/events.ts': {
+        '**/src/utils/pipeline.ts': {
           statements: 90,
           branches: 90,
           functions: 90,
           lines: 90,
         },
-        '**/src/budget.ts': {
+        '**/src/core/events.ts': {
+          statements: 90,
+          branches: 90,
+          functions: 90,
+          lines: 90,
+        },
+        '**/src/core/budget.ts': {
           statements: 90,
           branches: 90,
           functions: 90,

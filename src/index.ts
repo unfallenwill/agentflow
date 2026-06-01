@@ -1,11 +1,11 @@
 // AgentFlow — Workflow engine powered by CodeBuddy Agent SDK
 
 // Engine
-export { Engine } from './engine.js';
+export { Engine } from './core/engine.js'
 
 // Result type
-export { ok, err } from './result.js';
-export type { Result } from './result.js';
+export { ok, err } from './utils/result.js'
+export type { Result } from './utils/result.js'
 
 // Types
 export type {
@@ -19,13 +19,13 @@ export type {
   ScriptGlobals,
   ScriptMeta,
   WorkflowRef,
-} from './types.js';
+} from './types.js'
 
 // Event bus
-export { EngineEventBus } from './events.js';
+export { EngineEventBus } from './core/events.js'
 
 // Concurrency
-export { Semaphore } from './concurrency.js';
+export { Semaphore } from './utils/semaphore.js'
 
 // Budget
-export { BudgetTracker } from './budget.js';
+export { BudgetTracker } from './core/budget.js'

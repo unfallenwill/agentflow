@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { EngineEventBus } from '../src/events.js'
+import { EngineEventBus } from '../src/core/events.js'
 
 describe('EngineEventBus', () => {
   it('delivers events to subscribers', () => {

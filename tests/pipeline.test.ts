@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pipelineExecute } from '../src/pipeline.js'
+import { pipelineExecute } from '../src/utils/pipeline.js'
 
 describe('pipeline', () => {
   it('passes each item through all stages', async () => {

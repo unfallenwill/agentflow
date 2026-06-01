@@ -14,18 +14,18 @@ export async function pipelineExecute(
 ): Promise<unknown[]> {
   return Promise.all(
     items.map(async (item, index) => {
-      let current: unknown = item;
+      let current: unknown = item
       for (const stage of stages) {
         try {
-          current = await stage(current, item, index);
+          current = await stage(current, item, index)
         } catch {
-          return null;
+          return null
         }
         if (current === null || current === undefined) {
-          return null;
+          return null
         }
       }
-      return current;
+      return current
     }),
-  );
+  )
 }
