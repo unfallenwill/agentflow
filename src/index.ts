@@ -18,6 +18,7 @@ export type {
   EngineRunResult,
   ScriptGlobals,
   ScriptMeta,
+  WorkflowRef,
 } from './types.js';
 
 // Event bus

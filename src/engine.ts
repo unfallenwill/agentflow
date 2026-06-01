@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { resolve, extname } from 'node:path';
+import { transform as sucraseTransform } from 'sucrase';
 import type {
   AgentOpts,
   EngineEventHandler,
@@ -7,6 +8,7 @@ import type {
   EngineRunResult,
   ScriptGlobals,
   ScriptMeta,
+  WorkflowRef,
 } from './types.js';
 import { ok, err } from './result.js';
 import { EngineEventBus } from './events.js';
@@ -22,11 +24,23 @@ const AsyncFunction = Object.getPrototypeOf(
   ...args: string[]
 ) => (...params: unknown[]) => Promise<unknown>;
 
+/** @internal Brand symbol for SharedState discrimination */
+const _sharedBrand: unique symbol = Symbol('agentflow:shared-state');
+
+/** Internal shared state passed from parent to child engine */
+interface SharedState {
+  [_sharedBrand]: typeof _sharedBrand;
+  bus: EngineEventBus;
+  budget: BudgetTracker;
+  semaphore: Semaphore;
+  depth: number;
+}
+
 /**
  * AgentFlow workflow engine.
  *
  * Loads a workflow script, injects globals (agent, parallel, pipeline,
- * phase, log, budget, args), and executes it.
+ * phase, log, budget, args, workflow), and executes it.
  *
  * @example
  * const engine = new Engine({ scriptPath: './workflows/demo.js' });
@@ -38,15 +52,30 @@ export class Engine {
   private readonly bus: EngineEventBus;
   private readonly budget: BudgetTracker;
   private readonly semaphore: Semaphore;
+  private readonly depth: number;
 
-  constructor(opts: EngineOptions, bus?: EngineEventBus) {
+  constructor(opts: EngineOptions);
+  /** @internal Create a child engine sharing parent state */
+  constructor(opts: EngineOptions, shared: SharedState);
+  constructor(opts: EngineOptions, shared?: SharedState) {
     this.opts = opts;
-    this.bus = bus ?? new EngineEventBus();
-    this.budget = new BudgetTracker(
-      opts.maxBudgetUsd ?? null,
-      this.bus,
-    );
-    this.semaphore = new Semaphore(opts.maxConcurrency ?? 10);
+
+    if (shared !== undefined && _sharedBrand in shared) {
+      // Child engine: share bus, budget, semaphore from parent
+      this.bus = shared.bus;
+      this.budget = shared.budget;
+      this.semaphore = shared.semaphore;
+      this.depth = shared.depth;
+    } else {
+      // Root engine: create fresh state
+      this.bus = new EngineEventBus();
+      this.budget = new BudgetTracker(
+        opts.maxBudgetUsd ?? null,
+        this.bus,
+      );
+      this.semaphore = new Semaphore(opts.maxConcurrency ?? 10);
+      this.depth = 0;
+    }
   }
 
   /** Subscribe to engine events. Returns an unsubscribe function. */
@@ -128,11 +157,58 @@ export class Engine {
 
       budget: this.budget.toHandle(),
       args: this.opts.args ?? {},
+
+      // ── Nested workflow ─────────────────────────────────────────────
+      // Creates a child Engine sharing bus, budget, semaphore.
+      // Only one level of nesting allowed (depth 0 → 1).
+      workflow: (ref: WorkflowRef, childArgs?: unknown) =>
+        this.executeChildWorkflow(ref, childArgs),
     };
   }
 
   /**
-   * Load a workflow script: extract meta export, return the remaining body.
+   * Execute a nested child workflow.
+   * Shares the parent's bus, budget, semaphore, signal.
+   * Throws if nesting depth exceeds 1.
+   */
+  private async executeChildWorkflow(
+    ref: WorkflowRef,
+    childArgs?: unknown,
+  ): Promise<unknown> {
+    if (this.depth >= 1) {
+      throw new Error('workflow() nesting limit exceeded: only one level of nesting is allowed');
+    }
+
+    const scriptPath = typeof ref === 'string' ? ref : ref.scriptPath;
+
+    const childOpts: EngineOptions = { scriptPath, args: childArgs };
+    if (this.opts.cwd !== undefined) childOpts.cwd = this.opts.cwd;
+    if (this.opts.defaultModel !== undefined) childOpts.defaultModel = this.opts.defaultModel;
+    if (this.opts.permissionMode !== undefined) childOpts.permissionMode = this.opts.permissionMode;
+    if (this.opts.signal !== undefined) childOpts.signal = this.opts.signal;
+
+    const childEngine = new Engine(
+      childOpts,
+      {
+        [_sharedBrand]: _sharedBrand,
+        bus: this.bus,
+        budget: this.budget,
+        semaphore: this.semaphore,
+        depth: this.depth + 1,
+      },
+    );
+
+    const result = await childEngine.run();
+
+    if (!result.ok) {
+      throw new Error(`Child workflow "${scriptPath}" failed: ${result.error.message}`, { cause: result.error });
+    }
+
+    return result.value.result;
+  }
+
+  /**
+   * Load a workflow script: extract meta export, transpile TS if needed.
    */
   private async loadScript(
     scriptPath: string,
@@ -150,7 +226,21 @@ export class Engine {
       return err(e instanceof Error ? e : new Error(String(e)));
     }
 
+    // Transpile TypeScript → JS if needed
+    const isTS = extname(absPath) === '.ts';
+    if (isTS) {
+      try {
+        const transformed = sucraseTransform(source, {
+          transforms: ['typescript'],
+        });
+        source = transformed.code;
+      } catch (e) {
+        return err(e instanceof Error ? e : new Error(`TypeScript transpilation failed: ${String(e)}`));
+      }
+    }
+
     // Extract `export const meta = { ... }` — handles multi-line objects
+    // Match from `export const meta =` to a `}` on its own line (no leading spaces)
     const metaMatch = source.match(
       /export\s+const\s+meta\s*=\s*(\{[\s\S]*?\n\})\s*;?\s*\n/,
     );
@@ -159,13 +249,10 @@ export class Engine {
     let body = source;
 
     if (metaMatch?.[1] !== undefined) {
+      // Parse JS object (not JSON) — supports single quotes, unquoted keys, trailing commas
       try {
-        meta = JSON.parse(
-          // Strip trailing commas (not valid JSON but valid JS)
-          metaMatch[1].replace(/,\s*([}\]])/g, '$1'),
-        ) as ScriptMeta;
+        meta = new Function(`return (${metaMatch[1]})`)() as ScriptMeta;
       } catch {
-        // If JSON parse fails, try eval-free approach: skip meta
         meta = null;
       }
       // Remove the meta export line from the body
@@ -190,6 +277,7 @@ export class Engine {
       'log',
       'budget',
       'args',
+      'workflow',
     ] as const;
 
     try {
@@ -202,6 +290,7 @@ export class Engine {
         globals.log,
         globals.budget,
         globals.args,
+        globals.workflow,
       );
       return ok(result);
     } catch (e) {

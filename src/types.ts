@@ -96,6 +96,9 @@ export interface AgentContext {
 
 // ── Script globals contract ───────────────────────────────────────────
 
+/** First argument to workflow(): script path ref or saved name */
+export type WorkflowRef = string | { scriptPath: string };
+
 export interface ScriptGlobals {
   agent: <T = unknown>(prompt: string, opts?: AgentOpts) => Promise<T | null>;
   parallel: (thunks: Array<() => Promise<unknown>>) => Promise<unknown[]>;
@@ -109,6 +112,8 @@ export interface ScriptGlobals {
   log: (message: string) => void;
   budget: BudgetHandle;
   args: unknown;
+  /** Execute a nested sub-workflow. Only one level of nesting allowed. */
+  workflow: (ref: WorkflowRef, childArgs?: unknown) => Promise<unknown>;
 }
 
 // ── Engine run return type ────────────────────────────────────────────
