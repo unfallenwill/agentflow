@@ -321,12 +321,9 @@ export class Engine {
    * so that top-level await and other async constructs are valid.
    * Returns null on success, or a formatted Error with file/line/column diagnostics.
    */
-  private validateSyntax(
-    body: string,
-    filename: string,
-    metaLineCount: number,
-  ): Error | null {
-    const header = 'async function anonymous(agent, parallel, pipeline, phase, log, budget, args, workflow) {\n'
+  private validateSyntax(body: string, filename: string, metaLineCount: number): Error | null {
+    const header =
+      'async function anonymous(agent, parallel, pipeline, phase, log, budget, args, workflow) {\n'
     const wrapped = header + body + '\n}'
     try {
       new Script(wrapped, { filename })
@@ -337,10 +334,7 @@ export class Engine {
       }
 
       const { originalLine, codeLine, pointer } = this.parseV8Diagnostic(e, filename, metaLineCount)
-      const parts = [
-        `${e.constructor.name}: ${e.message}`,
-        `  ┌─ ${filename}:${originalLine}`,
-      ]
+      const parts = [`${e.constructor.name}: ${e.message}`, `  ┌─ ${filename}:${originalLine}`]
       if (codeLine !== null) parts.push(`  │ ${codeLine}`)
       if (pointer !== null) parts.push(`  │ ${pointer}`)
 
@@ -380,5 +374,4 @@ export class Engine {
 
     return { originalLine, codeLine, pointer }
   }
-
 }
