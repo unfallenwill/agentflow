@@ -36,7 +36,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "examples"
   ],
   "bin": {
     "batonjs": "./dist/cli.mjs"
