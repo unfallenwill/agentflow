@@ -347,6 +347,7 @@ const budget = new BudgetTracker(10.0); // $10 USD cap
 ### Guides
 
 - **[Getting Started](#quick-start)** — Installation, quick start, and basic usage of the BatonJS workflow engine
+- **[Workflow Tutorial](workflow-tutorial/)** — Step-by-step tutorial for AI assistants to learn BatonJS concepts, API patterns, and best practices (6 chapters)
 - **[Examples](examples/)** — 31 workflow examples from hello-world to full quality gate, covering pipeline, parallel, adversarial verify, judge panel, and more
 
 ### API Reference

@@ -37,7 +37,8 @@
   },
   "files": [
     "dist",
-    "examples"
+    "examples",
+    "workflow-tutorial"
   ],
   "bin": {
     "batonjs": "./dist/cli.mjs"
