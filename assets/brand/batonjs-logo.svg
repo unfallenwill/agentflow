@@ -1,42 +1,24 @@
-<svg width="960" height="256" viewBox="0 0 960 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+<svg width="820" height="220" viewBox="0 0 820 220" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
   <title id="title">BatonJS logo</title>
-  <desc id="desc">A baton-shaped workflow mark with branching flow nodes and the BatonJS wordmark.</desc>
+  <desc id="desc">BatonJS wordmark with a modern geometric B mark for a CLI and SDK.</desc>
   <defs>
-    <linearGradient id="batonjs-a" x1="57" y1="214" x2="251" y2="20" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1D4ED8"/>
-      <stop offset="0.52" stop-color="#0F766E"/>
-      <stop offset="1" stop-color="#F59E0B"/>
-    </linearGradient>
-    <linearGradient id="batonjs-b" x1="37" y1="128" x2="272" y2="128" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0F172A"/>
-      <stop offset="1" stop-color="#111827"/>
+    <linearGradient id="flow" x1="65" y1="184" x2="190" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#2DD4BF"/>
     </linearGradient>
   </defs>
-
-  <g>
-    <rect x="16" y="16" width="224" height="224" rx="52" fill="#F8FAFC"/>
-    <rect x="16" y="16" width="224" height="224" rx="52" stroke="#E2E8F0" stroke-width="2"/>
-    <path d="M64 173.5L178.5 59" stroke="url(#batonjs-b)" stroke-width="22" stroke-linecap="round"/>
-    <path d="M78 188L194 72" stroke="url(#batonjs-a)" stroke-width="10" stroke-linecap="round"/>
-    <path d="M100 151C135 151 151 136 151 101" stroke="#0F766E" stroke-width="10" stroke-linecap="round"/>
-    <path d="M118 169C157 169 180 146 180 107" stroke="#1D4ED8" stroke-width="10" stroke-linecap="round"/>
-    <path d="M98 151H73" stroke="#0F766E" stroke-width="10" stroke-linecap="round"/>
-    <path d="M151 99V74" stroke="#0F766E" stroke-width="10" stroke-linecap="round"/>
-    <path d="M118 169H91" stroke="#1D4ED8" stroke-width="10" stroke-linecap="round"/>
-    <path d="M180 107V80" stroke="#1D4ED8" stroke-width="10" stroke-linecap="round"/>
-    <circle cx="64" cy="173.5" r="16" fill="#0F172A"/>
-    <circle cx="178.5" cy="59" r="16" fill="#0F172A"/>
-    <circle cx="73" cy="151" r="13" fill="#0F766E"/>
-    <circle cx="151" cy="74" r="13" fill="#0F766E"/>
-    <circle cx="91" cy="169" r="13" fill="#1D4ED8"/>
-    <circle cx="180" cy="80" r="13" fill="#1D4ED8"/>
-    <circle cx="64" cy="173.5" r="6" fill="#F8FAFC"/>
-    <circle cx="178.5" cy="59" r="6" fill="#F8FAFC"/>
+  <g transform="translate(20 18) scale(.72)">
+    <rect x="24" y="24" width="208" height="208" rx="46" fill="#08111F"/>
+    <path d="M76 184V56" stroke="#F8FAFC" stroke-width="20" stroke-linecap="round"/>
+    <path d="M76 66H136C164 66 184 82 184 106C184 130 164 145 136 145H76" stroke="url(#flow)" stroke-width="19" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M76 112H142C174 112 196 129 196 156C196 179 175 194 142 194H76" stroke="#F8FAFC" stroke-width="19" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M99 171L176 79" stroke="#22D3EE" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="76" cy="56" r="8" fill="#22D3EE"/>
+    <circle cx="196" cy="156" r="8" fill="#2DD4BF"/>
   </g>
-
-  <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-weight="800">
-    <text x="292" y="162" fill="#0F172A" font-size="104">Baton</text>
-    <text x="610" y="162" fill="#F59E0B" font-size="104">JS</text>
-    <text x="298" y="202" fill="#475569" font-size="26" font-weight="600">agent workflows in parallel, pipeline, and phases</text>
+  <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <text x="226" y="120" fill="#08111F" font-size="76" font-weight="820">Baton</text>
+    <text x="464" y="120" fill="#0891B2" font-size="76" font-weight="820">JS</text>
+    <text x="231" y="158" fill="#475569" font-size="23" font-weight="560">AI agent workflows</text>
   </g>
 </svg>
