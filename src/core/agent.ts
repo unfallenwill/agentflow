@@ -1,10 +1,14 @@
 import { query } from '@tencent-ai/agent-sdk'
 import type { Options, ResultMessage } from '@tencent-ai/agent-sdk'
+import Ajv from 'ajv'
 import type { AgentContext } from './context.js'
 import type { AgentOpts } from '../types.js'
 
 /** Default timeout for a single agent call (ms) */
 const DEFAULT_AGENT_TIMEOUT_MS = 120_000
+
+/** Shared Ajv instance for JSON Schema validation */
+const ajv = new Ajv({ allErrors: true })
 
 /** Default max retry attempts for transient errors */
 const DEFAULT_MAX_RETRIES = 2
@@ -310,13 +314,29 @@ export async function executeAgent<T = unknown>(
 
     // Fall back: try JSON parse (strip markdown fences if present), otherwise raw string
     const raw = successMsg.result
+    let parsed: T
     try {
-      // Some models wrap JSON in ```json ... ``` — strip before parsing
       const stripped = raw.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/, '')
-      return JSON.parse(stripped) as T
+      parsed = JSON.parse(stripped) as T
     } catch {
       return raw as T
     }
+
+    // Validate against schema when provided
+    if (opts?.schema !== undefined) {
+      const validate = ajv.compile(opts.schema)
+      if (!validate(parsed)) {
+        const errors = validate.errors?.map((e) => `${e.instancePath} ${e.message}`).join('; ')
+        ctx.bus.emit({
+          kind: 'agent_error',
+          label,
+          error: `Schema validation failed: ${errors}`,
+        })
+        return null
+      }
+    }
+
+    return parsed
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
     ctx.bus.emit({ kind: 'agent_error', label, error: message })

@@ -124,6 +124,40 @@ describe('executeAgent', () => {
     expect(result).toEqual(structured)
   })
 
+  it('returns null when schema validation fails', async () => {
+    queryMock.mockImplementation(() => {
+      return createMockQuery([successResult({ result: JSON.stringify({ name: 42 }) })])
+    })
+
+    const ctx = makeContext()
+    const events = collectEvents(ctx.bus)
+    const schema = {
+      type: 'object',
+      properties: { name: { type: 'string' } },
+      required: ['name'],
+    }
+    const result = await executeAgent('test', { schema }, ctx)
+
+    expect(result).toBeNull()
+    const errorEvent = events.find((e) => e.kind === 'agent_error')
+    expect(errorEvent?.error).toContain('Schema validation failed')
+  })
+
+  it('returns parsed result when schema validation passes', async () => {
+    queryMock.mockImplementation(() => {
+      return createMockQuery([successResult({ result: JSON.stringify({ name: 'Alice' }) })])
+    })
+
+    const ctx = makeContext()
+    const schema = {
+      type: 'object',
+      properties: { name: { type: 'string' } },
+      required: ['name'],
+    }
+    const result = await executeAgent<{ name: string }>('test', { schema }, ctx)
+    expect(result).toEqual({ name: 'Alice' })
+  })
+
   // ── (d) No result message ─────────────────────────────────────────
 
   it('returns null and emits agent_error when no result message', async () => {
