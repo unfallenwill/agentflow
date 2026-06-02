@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
-import { resolve, extname } from 'node:path'
+import { resolve, extname, basename } from 'node:path'
+import { Script } from 'node:vm'
 import { transform as sucraseTransform } from 'sucrase'
 import type {
   AgentOpts,
@@ -39,6 +40,11 @@ interface SharedState {
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
   ...args: string[]
 ) => (...params: unknown[]) => Promise<unknown>
+
+/** Escape special regex characters in a string. */
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
 
 /**
  * AgentFlow workflow engine.
@@ -104,14 +110,14 @@ export class Engine {
       return err(loaded.error)
     }
 
-    const { meta, body } = loaded.value
+    const { meta, body, metaLineCount } = loaded.value
     this.bus.emit({ kind: 'workflow_start', meta })
 
     // 2. Build script globals
     const globals = this.createGlobals(sdk)
 
     // 3. Execute script body as an async function
-    const execResult = await this.executeBody(body, globals)
+    const execResult = await this.executeBody(body, globals, metaLineCount, this.opts.scriptPath)
 
     const duration = Date.now() - startTime
     const totalCost = this.budget.spent()
@@ -234,7 +240,7 @@ export class Engine {
    */
   private async loadScript(
     scriptPath: string,
-  ): Promise<Result<{ meta: ScriptMeta | null; body: string }, Error>> {
+  ): Promise<Result<{ meta: ScriptMeta | null; body: string; metaLineCount: number }, Error>> {
     const absPath = resolve(scriptPath)
     let source: string
     try {
@@ -259,15 +265,27 @@ export class Engine {
     }
 
     // Extract and parse meta export safely (brace-depth + JSON5, no eval)
-    const { meta, body } = extractMeta(source)
+    const { meta, body, metaLineCount } = extractMeta(source)
 
-    return ok({ meta, body })
+    return ok({ meta, body, metaLineCount })
   }
 
   /**
    * Execute the script body as an AsyncFunction with injected globals.
+   * Pre-validates with vm.Script for rich syntax error diagnostics.
    */
-  private async executeBody(body: string, globals: ScriptGlobals): Promise<Result<unknown, Error>> {
+  private async executeBody(
+    body: string,
+    globals: ScriptGlobals,
+    metaLineCount: number,
+    scriptPath: string,
+  ): Promise<Result<unknown, Error>> {
+    // Pre-validate syntax with vm.Script for better error messages
+    const syntaxError = this.validateSyntax(body, basename(scriptPath), metaLineCount)
+    if (syntaxError !== null) {
+      return err(syntaxError)
+    }
+
     const paramNames = [
       'agent',
       'parallel',
@@ -296,4 +314,71 @@ export class Engine {
       return err(e instanceof Error ? e : new Error(String(e)))
     }
   }
+
+  /**
+   * Validate script body syntax using vm.Script.
+   * Wraps the body in an async function header (matching new AsyncFunction's shape)
+   * so that top-level await and other async constructs are valid.
+   * Returns null on success, or a formatted Error with file/line/column diagnostics.
+   */
+  private validateSyntax(
+    body: string,
+    filename: string,
+    metaLineCount: number,
+  ): Error | null {
+    const header = 'async function anonymous(agent, parallel, pipeline, phase, log, budget, args, workflow) {\n'
+    const wrapped = header + body + '\n}'
+    try {
+      new Script(wrapped, { filename })
+      return null
+    } catch (e) {
+      if (!(e instanceof SyntaxError)) {
+        return e instanceof Error ? e : new Error(String(e))
+      }
+
+      const { originalLine, codeLine, pointer } = this.parseV8Diagnostic(e, filename, metaLineCount)
+      const parts = [
+        `${e.constructor.name}: ${e.message}`,
+        `  ┌─ ${filename}:${originalLine}`,
+      ]
+      if (codeLine !== null) parts.push(`  │ ${codeLine}`)
+      if (pointer !== null) parts.push(`  │ ${pointer}`)
+
+      return new Error(parts.join('\n'), { cause: e })
+    }
+  }
+
+  /**
+   * Parse a V8 SyntaxError stack to extract the body-relative line number,
+   * the offending code line, and the pointer (^) indicator.
+   * Remap the line number to the original script position.
+   */
+  private parseV8Diagnostic(
+    e: SyntaxError,
+    filename: string,
+    metaLineCount: number,
+  ): { originalLine: number; codeLine: string | null; pointer: string | null } {
+    // V8 stack format:
+    //   filename:3
+    //   <code line>
+    //        ^^
+    //
+    //   SyntaxError: ...
+    const stack = e.stack ?? ''
+    const lines = stack.split('\n')
+
+    // Extract line number from first line ("filename:N")
+    const firstLine = lines[0] ?? ''
+    const match = firstLine.match(new RegExp(`${escapeRegex(filename)}:(\\d+)`))
+    const wrappedLine = match !== null ? parseInt(match[1] ?? '1', 10) : 1
+    const bodyLine = wrappedLine - 1 // subtract 1-line async function header
+    const originalLine = bodyLine + metaLineCount
+
+    // Extract code line and pointer from subsequent lines
+    const codeLine = lines[1]?.trim() ?? null
+    const pointer = lines[2]?.replace(/^\s*/, ' ') ?? null
+
+    return { originalLine, codeLine, pointer }
+  }
+
 }

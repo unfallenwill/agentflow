@@ -147,7 +147,8 @@ engine.on((event) => {
       )
       break
     case 'workflow_error':
-      console.error(`💥 ${event.error}`)
+      // Error is surfaced via run() result and printed by fatal() below.
+      // Event remains emitted for programmatic consumers.
       break
     case 'pipeline_error':
       console.error(

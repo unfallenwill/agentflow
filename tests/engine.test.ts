@@ -127,7 +127,8 @@ return { got: args }
       const result = await engine.run()
       expect(result.ok).toBe(false)
       if (!result.ok) {
-        expect(result.error).toBeInstanceOf(SyntaxError)
+        expect(result.error.message).toContain('SyntaxError')
+        expect(result.error.message).toContain('┌─')
       }
     })
   })

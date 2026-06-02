@@ -11,11 +11,16 @@ import type { ScriptMeta } from '../types.js'
  * Returns `{ meta, body }` where `meta` is the parsed object (or null on
  * failure) and `body` is the source with the meta export removed.
  */
-export function extractMeta(source: string): { meta: ScriptMeta | null; body: string } {
+export function extractMeta(source: string): {
+  meta: ScriptMeta | null
+  body: string
+  /** Number of source lines consumed by the stripped meta export (for line-offset mapping). */
+  metaLineCount: number
+} {
   // Locate `export const meta =`
   const declarationMatch = source.match(/export\s+const\s+meta\s*=\s*/)
   if (declarationMatch?.index === undefined) {
-    return { meta: null, body: source }
+    return { meta: null, body: source, metaLineCount: 0 }
   }
 
   const declStart = declarationMatch.index
@@ -28,26 +33,26 @@ export function extractMeta(source: string): { meta: ScriptMeta | null; body: st
     if (source[objStart] === '/' && source[objStart + 1] === '/') {
       // Line comment — skip to end of line
       objStart = source.indexOf('\n', objStart)
-      if (objStart === -1) return { meta: null, body: source }
+      if (objStart === -1) return { meta: null, body: source, metaLineCount: 0 }
       continue
     }
     if (source[objStart] === '/' && source[objStart + 1] === '*') {
       // Block comment — skip to `*/`
       objStart = source.indexOf('*/', objStart + 2)
-      if (objStart === -1) return { meta: null, body: source }
+      if (objStart === -1) return { meta: null, body: source, metaLineCount: 0 }
       objStart += 2
       continue
     }
     const char = source[objStart]
     if (char !== undefined && !/\s/.test(char)) {
       // Non-whitespace, non-brace — not a valid meta export
-      return { meta: null, body: source }
+      return { meta: null, body: source, metaLineCount: 0 }
     }
     objStart++
   }
 
   if (objStart >= source.length) {
-    return { meta: null, body: source }
+    return { meta: null, body: source, metaLineCount: 0 }
   }
 
   // Walk with brace-depth counter, skipping strings and comments
@@ -166,7 +171,8 @@ export function extractMeta(source: string): { meta: ScriptMeta | null; body: st
           fullEnd += 2
 
         const body = source.slice(0, declStart) + source.slice(fullEnd)
-        return { meta, body }
+        const metaLineCount = countNewlines(source.slice(0, fullEnd))
+        return { meta, body, metaLineCount }
       }
       i++
       continue
@@ -176,5 +182,14 @@ export function extractMeta(source: string): { meta: ScriptMeta | null; body: st
   }
 
   // Never found matching closing brace
-  return { meta: null, body: source }
+  return { meta: null, body: source, metaLineCount: 0 }
+}
+
+/** Count the number of `\n` characters in a string. */
+function countNewlines(s: string): number {
+  let count = 0
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '\n') count++
+  }
+  return count
 }
