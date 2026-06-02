@@ -16,12 +16,38 @@ export class BudgetTracker {
   /** Record cost from a completed agent call. Returns false if budget exceeded. */
   record(costUsd: number): boolean {
     this._spent += costUsd
+    this.emitUpdate()
+    return this.total === null || this._spent <= this.total
+  }
+
+  /** Atomically check and reserve budget. Returns false if would exceed. */
+  tryAcquire(estimatedCost: number): boolean {
+    if (this.total === null) return true
+    if (this._spent + estimatedCost > this.total) return false
+    this._spent += estimatedCost
+    this.emitUpdate()
+    return true
+  }
+
+  /** Adjust reserved budget to actual cost after SDK call completes. */
+  adjust(reservedCost: number, actualCost: number): void {
+    this._spent += actualCost - reservedCost
+    this._spent = Math.max(0, this._spent)
+    this.emitUpdate()
+  }
+
+  /** Emit a budget_update event with current state. */
+  private emitUpdate(): void {
     this.bus.emit({
       kind: 'budget_update',
       spent: this._spent,
       remaining: this.remaining(),
     })
-    return this.total === null || this._spent <= this.total
+  }
+
+  /** Check if cumulative spending has exceeded the budget. */
+  isExceeded(): boolean {
+    return this.total !== null && this._spent > this.total
   }
 
   /** Total spent so far in USD. */

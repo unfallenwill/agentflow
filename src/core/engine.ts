@@ -17,6 +17,7 @@ import { BudgetTracker } from './budget.js'
 import { Semaphore } from '../utils/semaphore.js'
 import { parallelExecute } from '../utils/parallel.js'
 import { pipelineExecute } from '../utils/pipeline.js'
+import { extractMeta } from '../utils/extract-meta.js'
 import { executeAgent } from './agent.js'
 
 /** @internal Brand symbol for SharedState discrimination */
@@ -226,23 +227,8 @@ export class Engine {
       }
     }
 
-    // Extract `export const meta = { ... }` — handles multi-line objects
-    // Match from `export const meta =` to a `}` on its own line (no leading spaces)
-    const metaMatch = source.match(/export\s+const\s+meta\s*=\s*(\{[\s\S]*?\n\})\s*;?\s*\n/)
-
-    let meta: ScriptMeta | null = null
-    let body = source
-
-    if (metaMatch?.[1] !== undefined) {
-      // Parse JS object (not JSON) — supports single quotes, unquoted keys, trailing commas
-      try {
-        meta = new Function(`return (${metaMatch[1]})`)() as ScriptMeta
-      } catch {
-        meta = null
-      }
-      // Remove the meta export line from the body
-      body = source.replace(metaMatch[0], '')
-    }
+    // Extract and parse meta export safely (brace-depth + JSON5, no eval)
+    const { meta, body } = extractMeta(source)
 
     return ok({ meta, body })
   }

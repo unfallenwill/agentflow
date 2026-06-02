@@ -491,4 +491,178 @@ return childResult
       },
     )
   })
+
+  // ── Meta extraction edge cases ────────────────────────────────────
+
+  it('extracts meta with nested objects', async () => {
+    await withScript(
+      `
+export const meta = {
+  name: 'nested-test',
+  phases: [{ title: 'step1', config: { deep: true, nested: { value: 42 } } }],
+}
+
+return { ok: true }
+`,
+      async (scriptPath) => {
+        const engine = new Engine({ scriptPath, cwd: process.cwd() })
+        const result = await engine.run()
+        expect(result.ok).toBe(true)
+        if (result.ok) {
+          expect(result.value.meta?.name).toBe('nested-test')
+          expect(result.value.meta?.phases).toHaveLength(1)
+        }
+      },
+    )
+  })
+
+  it('extracts meta with closing brace inside string value', async () => {
+    await withScript(
+      `
+export const meta = {
+  name: 'brace-in-string',
+  description: 'contains a } brace',
+}
+
+return { ok: true }
+`,
+      async (scriptPath) => {
+        const engine = new Engine({ scriptPath, cwd: process.cwd() })
+        const result = await engine.run()
+        expect(result.ok).toBe(true)
+        if (result.ok) {
+          expect(result.value.meta?.name).toBe('brace-in-string')
+          expect(result.value.meta?.description).toBe('contains a } brace')
+        }
+      },
+    )
+  })
+
+  it('extracts single-line meta', async () => {
+    await withScript(
+      `
+export const meta = { name: 'single-line', phases: [] };
+
+return { ok: true }
+`,
+      async (scriptPath) => {
+        const engine = new Engine({ scriptPath, cwd: process.cwd() })
+        const result = await engine.run()
+        expect(result.ok).toBe(true)
+        if (result.ok) {
+          expect(result.value.meta?.name).toBe('single-line')
+        }
+      },
+    )
+  })
+
+  it('extracts meta with no trailing newline at end of file', async () => {
+    await withScript(
+      `export const meta = {
+  name: 'no-trailing-newline',
+  phases: [],
+}
+
+return { ok: true }`,
+      async (scriptPath) => {
+        const engine = new Engine({ scriptPath, cwd: process.cwd() })
+        const result = await engine.run()
+        expect(result.ok).toBe(true)
+        if (result.ok) {
+          expect(result.value.meta?.name).toBe('no-trailing-newline')
+        }
+      },
+    )
+  })
+
+  it('extracts meta with trailing commas', async () => {
+    await withScript(
+      `
+export const meta = {
+  name: 'trailing-commas',
+  phases: [
+    { title: 'step1', },
+  ],
+}
+
+return { ok: true }
+`,
+      async (scriptPath) => {
+        const engine = new Engine({ scriptPath, cwd: process.cwd() })
+        const result = await engine.run()
+        expect(result.ok).toBe(true)
+        if (result.ok) {
+          expect(result.value.meta?.name).toBe('trailing-commas')
+        }
+      },
+    )
+  })
+
+  it('extracts meta with single-quoted strings', async () => {
+    await withScript(
+      `
+export const meta = {
+  name: 'single-quotes',
+  description: 'uses single quotes',
+}
+
+return { ok: true }
+`,
+      async (scriptPath) => {
+        const engine = new Engine({ scriptPath, cwd: process.cwd() })
+        const result = await engine.run()
+        expect(result.ok).toBe(true)
+        if (result.ok) {
+          expect(result.value.meta?.name).toBe('single-quotes')
+          expect(result.value.meta?.description).toBe('uses single quotes')
+        }
+      },
+    )
+  })
+
+  it('gracefully handles unparseable meta with JSON5', async () => {
+    await withScript(
+      `
+export const meta = {
+  name: undefinedVariable,
+  phases: [],
+}
+
+return { ok: true }
+`,
+      async (scriptPath) => {
+        const engine = new Engine({ scriptPath, cwd: process.cwd() })
+        const result = await engine.run()
+        expect(result.ok).toBe(true)
+        if (result.ok) {
+          // JSON5.parse fails on undefined variable, meta should be null
+          expect(result.value.meta).toBeNull()
+        }
+      },
+    )
+  })
+
+  it('body executes correctly after meta removal', async () => {
+    await withScript(
+      `
+export const meta = {
+  name: 'body-test',
+  phases: [],
+}
+
+const x = 10
+const y = 20
+return { sum: x + y }
+`,
+      async (scriptPath) => {
+        const engine = new Engine({ scriptPath, cwd: process.cwd() })
+        const result = await engine.run()
+        expect(result.ok).toBe(true)
+        if (result.ok) {
+          expect(result.value.meta?.name).toBe('body-test')
+          expect(result.value.result).toEqual({ sum: 30 })
+        }
+      },
+    )
+  })
 })

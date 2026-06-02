@@ -310,16 +310,67 @@ describe('executeAgent', () => {
     const controller = new AbortController()
     const ctx: AgentContext = { bus, budget, semaphore, signal: controller.signal }
 
-    await executeAgent('test', undefined, ctx)
+    // Make query hang so we can abort mid-flight
+    queryMock.mockImplementation(({ options }: { prompt: string; options: Options }) => {
+      capturedSdkOpts = options
+      const iterator = {
+        async *[Symbol.asyncIterator]() {
+          await new Promise(() => {})
+        },
+      }
+      return Object.assign(iterator, {
+        interrupt: vi.fn(),
+        return: vi.fn(),
+      })
+    })
+
+    vi.useFakeTimers()
+    const promise = executeAgent('test', undefined, ctx)
+
+    // Advance timers to let the query start
+    await vi.advanceTimersByTimeAsync(0)
 
     // The SDK's abortController should not be aborted yet
     expect(capturedSdkOpts?.abortController?.signal.aborted).toBe(false)
 
     // Now abort the signal — the listener should forward it
     controller.abort()
-    // Allow the microtask queue to flush
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await vi.advanceTimersByTimeAsync(0)
     expect(capturedSdkOpts?.abortController?.signal.aborted).toBe(true)
+
+    // Let the timeout fire so the promise settles
+    await vi.advanceTimersByTimeAsync(120_000)
+    await promise
+  })
+
+  // ── Abort listener cleanup ────────────────────────────────────────
+
+  it('removes abort listener after successful completion', async () => {
+    const parentController = new AbortController()
+    const bus = new EngineEventBus()
+    const budget = new BudgetTracker(null, bus)
+    const semaphore = new Semaphore(10)
+    const ctx: AgentContext = { bus, budget, semaphore, signal: parentController.signal }
+
+    // Track listener count via a spy on addEventListener/removeEventListener
+    const addSpy = vi.spyOn(parentController.signal, 'addEventListener')
+    const removeSpy = vi.spyOn(parentController.signal, 'removeEventListener')
+
+    await executeAgent('test', undefined, ctx)
+
+    // addEventListener should have been called once to attach the listener
+    expect(addSpy).toHaveBeenCalledTimes(1)
+    // removeEventListener should have been called once to clean it up
+    expect(removeSpy).toHaveBeenCalledTimes(1)
+    // The same listener function should have been passed to both
+    const addCall = addSpy.mock.calls[0]
+    const removeCall = removeSpy.mock.calls[0]
+    expect(addCall).toBeDefined()
+    expect(removeCall).toBeDefined()
+    if (addCall === undefined || removeCall === undefined) return
+    expect(addCall[0]).toBe('abort')
+    expect(removeCall[0]).toBe('abort')
+    expect(removeCall[1]).toBe(addCall[1])
   })
 
   // ── (n) Permission mode ──────────────────────────────────────────
@@ -563,7 +614,7 @@ describe('executeAgent', () => {
 
     await executeAgent('test', undefined, ctx)
 
-    expect(budget.spent()).toBe(0.01)
+    expect(budget.spent()).toBeCloseTo(0.01)
   })
 
   it('passes remaining budget to sdkOpts when budget is set', async () => {
@@ -582,6 +633,48 @@ describe('executeAgent', () => {
     await executeAgent('test', undefined, ctx)
 
     expect(capturedSdkOpts?.maxBudgetUsd).toBeUndefined()
+  })
+
+  it('rejects agent call when budget is insufficient', async () => {
+    const bus = new EngineEventBus()
+    // Budget of 0 — nothing can be reserved
+    const budget = new BudgetTracker(0, bus)
+    const semaphore = new Semaphore(10)
+    const ctx: AgentContext = { bus, budget, semaphore }
+    const events = collectEvents(bus)
+
+    const result = await executeAgent('test', undefined, ctx)
+
+    expect(result).toBeNull()
+    expect(events.find((e) => e.kind === 'agent_error')).toEqual({
+      kind: 'agent_error',
+      label: undefined,
+      error: 'Budget insufficient for agent call',
+    })
+  })
+
+  it('prevents concurrent agents from exceeding budget', async () => {
+    const bus = new EngineEventBus()
+    // Budget of 0.02 — each call costs 0.01, so only one should succeed
+    const budget = new BudgetTracker(0.02, bus)
+    const semaphore = new Semaphore(10)
+    const ctx: AgentContext = { bus, budget, semaphore }
+
+    // Both agents attempt to reserve full remaining budget
+    const [resultA, resultB] = await Promise.all([
+      executeAgent('test-a', undefined, ctx),
+      executeAgent('test-b', undefined, ctx),
+    ])
+
+    // Exactly one should succeed, one should fail
+    const results = [resultA, resultB]
+    const successes = results.filter((r) => r !== null)
+    const failures = results.filter((r) => r === null)
+    expect(successes).toHaveLength(1)
+    expect(failures).toHaveLength(1)
+
+    // Total spend should not exceed budget
+    expect(budget.spent()).toBeLessThanOrEqual(0.02)
   })
 
   it('defaults permissionMode to bypassPermissions when not set', async () => {

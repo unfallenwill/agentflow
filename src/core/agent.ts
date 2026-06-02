@@ -145,6 +145,9 @@ export async function executeAgent<T = unknown>(
 
   const controller = new AbortController()
   let timeoutId: ReturnType<typeof setTimeout> | undefined
+  let onAbort: (() => void) | undefined
+  let budgetReserved = false
+  let reservedAmount = 0
 
   try {
     // Build SDK options
@@ -167,9 +170,24 @@ export async function executeAgent<T = unknown>(
       sdkOpts.cwd = ctx.cwd
     }
 
-    // Forward remaining budget to SDK
-    const remaining = ctx.budget.remaining()
-    if (remaining !== null) {
+    // ── Budget reservation ──────────────────────────────────────────────
+    // For limited budgets: atomically reserve to prevent concurrent overshoot.
+    // For unlimited budgets: skip reservation, record cost post-call.
+    const isLimited = ctx.budget.remaining() !== null
+
+    if (isLimited) {
+      const remaining = ctx.budget.remaining() as number // guaranteed non-null when limited
+      if (remaining === 0) {
+        ctx.bus.emit({ kind: 'agent_error', label, error: 'Budget insufficient for agent call' })
+        return null
+      }
+      // Reserve the full remaining budget pessimistically
+      if (!ctx.budget.tryAcquire(remaining)) {
+        ctx.bus.emit({ kind: 'agent_error', label, error: 'Budget insufficient for agent call' })
+        return null
+      }
+      budgetReserved = true
+      reservedAmount = remaining
       sdkOpts.maxBudgetUsd = remaining
     }
 
@@ -178,7 +196,7 @@ export async function executeAgent<T = unknown>(
       if (ctx.signal.aborted) {
         controller.abort()
       } else {
-        const onAbort = () => controller.abort()
+        onAbort = () => controller.abort()
         ctx.signal.addEventListener('abort', onAbort, { once: true })
       }
     }
@@ -259,14 +277,19 @@ export async function executeAgent<T = unknown>(
     // At this point resultMsg is the success variant with .result and .structured_output
     const successMsg = resultMsg as ResultMessage & { result: string; structured_output?: unknown }
 
-    // Record cost
+    // Adjust budget: replace reservation with actual cost
     const costUsd = successMsg.total_cost_usd
-    const withinBudget = ctx.budget.record(costUsd)
+    if (budgetReserved) {
+      ctx.budget.adjust(reservedAmount, costUsd)
+      budgetReserved = false
+    } else {
+      ctx.budget.record(costUsd)
+    }
 
     const duration = Date.now() - startTime
     ctx.bus.emit({ kind: 'agent_end', label, cost: costUsd, duration_ms: duration })
 
-    if (!withinBudget) {
+    if (ctx.budget.isExceeded()) {
       ctx.bus.emit({ kind: 'agent_error', label, error: 'Budget exceeded after agent call' })
       return null
     }
@@ -288,6 +311,9 @@ export async function executeAgent<T = unknown>(
     return null
   } finally {
     if (timeoutId !== undefined) clearTimeout(timeoutId)
+    if (onAbort !== undefined) ctx.signal?.removeEventListener('abort', onAbort)
+    // Release budget reservation if adjust() was never called (error paths)
+    if (budgetReserved) ctx.budget.adjust(reservedAmount, 0)
     release()
   }
 }
