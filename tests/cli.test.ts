@@ -48,7 +48,7 @@ describe('CLI argument validation', () => {
   it('rejects --sdk with invalid value', () => {
     const result = runCli(['dummy.js', '--sdk', 'invalid'])
     expect(result.exitCode).toBe(1)
-    expect(result.stderr).toContain("must be 'anthropic' or 'codebuddy'")
+    expect(result.stderr).toContain("must be 'anthropic', 'codebuddy', or 'codex'")
   })
 
   it('accepts --sdk anthropic', () => {
@@ -60,5 +60,31 @@ describe('CLI argument validation', () => {
   it('accepts --sdk codebuddy', () => {
     const result = runCli(['dummy.js', '--sdk', 'codebuddy'])
     expect(result.stderr).not.toContain('--sdk must be')
+  })
+
+  it('accepts --sdk codex', () => {
+    const result = runCli(['dummy.js', '--sdk', 'codex'])
+    expect(result.stderr).not.toContain('--sdk must be')
+  })
+
+  it('rejects --effort with invalid value', () => {
+    const result = runCli(['dummy.js', '--effort', 'low'])
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain("must be 'medium', 'high', or 'xhigh'")
+  })
+
+  it('accepts --effort medium', () => {
+    const result = runCli(['dummy.js', '--effort', 'medium'])
+    expect(result.stderr).not.toContain('--effort must be')
+  })
+
+  it('accepts --effort high', () => {
+    const result = runCli(['dummy.js', '--effort', 'high'])
+    expect(result.stderr).not.toContain('--effort must be')
+  })
+
+  it('accepts --effort xhigh', () => {
+    const result = runCli(['dummy.js', '--effort', 'xhigh'])
+    expect(result.stderr).not.toContain('--effort must be')
   })
 })

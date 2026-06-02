@@ -24,6 +24,7 @@ export type {
 // SDK adapter
 export { createSdkProvider } from './core/sdk.js'
 export type {
+  EffortLevel,
   SdkName,
   SdkProvider,
   SdkQueryOptions,

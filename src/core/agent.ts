@@ -4,7 +4,7 @@ import type { AgentOpts } from '../types.js'
 import type { SdkQueryOptions, SdkResultMessage } from './sdk.js'
 
 /** Default timeout for a single agent call (ms) */
-const DEFAULT_AGENT_TIMEOUT_MS = 120_000
+const DEFAULT_AGENT_TIMEOUT_MS = 300_000
 
 /** Shared Ajv instance for JSON Schema validation */
 const ajv = new Ajv({ allErrors: true })
@@ -177,6 +177,12 @@ export async function executeAgent<T = unknown>(
       sdkOpts.model = opts.model
     } else if (ctx.defaultModel !== undefined) {
       sdkOpts.model = ctx.defaultModel
+    }
+
+    if (opts?.effort !== undefined) {
+      sdkOpts.effort = opts.effort
+    } else if (ctx.effort !== undefined) {
+      sdkOpts.effort = ctx.effort
     }
 
     if (ctx.cwd !== undefined) {

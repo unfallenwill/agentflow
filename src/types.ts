@@ -1,4 +1,5 @@
 import type { SdkName } from './core/sdk.js'
+import type { EffortLevel } from './core/sdk-types.js'
 import type { Result } from './utils/result.js'
 
 // ── Script-facing types (globals injected into workflow scripts) ─────
@@ -12,6 +13,8 @@ export interface AgentOpts {
   model?: string
   /** Max retry attempts for transient errors (429, network). Default: 2 */
   maxRetries?: number
+  /** Reasoning effort level: 'medium' | 'high' | 'xhigh' */
+  effort?: EffortLevel
 }
 
 /** The `budget` object exposed as a script global */
@@ -65,7 +68,7 @@ export interface EngineOptions {
   args?: unknown
   /** Maximum budget in USD; null or undefined means unlimited */
   maxBudgetUsd?: number
-  /** Maximum concurrent agent calls (default: 10) */
+  /** Maximum concurrent agent calls (default: 2) */
   maxConcurrency?: number
   /** Working directory for agent sessions */
   cwd?: string
@@ -75,8 +78,10 @@ export interface EngineOptions {
   permissionMode?: PermissionMode
   /** SDK backend to use. Default: 'anthropic' */
   sdk?: SdkName
-  /** Timeout in ms for every agent call in this workflow (default: 120000) */
+  /** Timeout in ms for every agent call in this workflow (default: 300000) */
   agentTimeoutMs?: number
+  /** Default reasoning effort level for all agents */
+  effort?: EffortLevel
   /** AbortSignal to cancel the entire workflow */
   signal?: AbortSignal
 }

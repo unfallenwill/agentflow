@@ -83,7 +83,7 @@ export class Engine {
       // Root engine: create fresh state
       this.bus = new EngineEventBus()
       this.budget = new BudgetTracker(opts.maxBudgetUsd ?? null, this.bus)
-      this.semaphore = new Semaphore(opts.maxConcurrency ?? 10)
+      this.semaphore = new Semaphore(opts.maxConcurrency ?? 2)
       this.depth = 0
       this.shared = undefined
     }
@@ -152,6 +152,7 @@ export class Engine {
           cwd: this.opts.cwd,
           defaultModel: this.opts.defaultModel,
           permissionMode: this.opts.permissionMode,
+          effort: this.opts.effort,
           signal: this.opts.signal,
           agentTimeoutMs: this.opts.agentTimeoutMs,
         }),
@@ -214,6 +215,7 @@ export class Engine {
     if (this.opts.cwd !== undefined) childOpts.cwd = this.opts.cwd
     if (this.opts.defaultModel !== undefined) childOpts.defaultModel = this.opts.defaultModel
     if (this.opts.permissionMode !== undefined) childOpts.permissionMode = this.opts.permissionMode
+    if (this.opts.effort !== undefined) childOpts.effort = this.opts.effort
     if (this.opts.signal !== undefined) childOpts.signal = this.opts.signal
 
     const childEngine = new Engine(childOpts, {

@@ -15,16 +15,21 @@ cli
   .command('[script]', 'Run a workflow script')
   .option('--args <json>', 'Pass arguments to the script as the `args` global')
   .option('--budget <usd>', 'Set max budget in USD (default: unlimited)')
-  .option('--concurrency <n>', 'Max concurrent agents (default: 10)')
+  .option('--concurrency <n>', 'Max concurrent agents (default: 2)')
   .option('--cwd <dir>', 'Working directory for agents (default: .)')
   .option('--model <model>', 'Default model for agents')
-  .option('--sdk <name>', "SDK backend: 'anthropic' (default) or 'codebuddy'")
-  .option('--timeout <minutes>', 'Agent call timeout in minutes (default: 2)')
+  .option('--sdk <name>', "SDK backend: 'anthropic' (default), 'codebuddy', or 'codex'")
+  .option('--timeout <minutes>', 'Agent call timeout in minutes (default: 5)')
+  .option(
+    '--effort <level>',
+    "Reasoning effort: 'medium', 'high', or 'xhigh' (default: SDK-specific)",
+  )
   .example('batonjs ./workflows/demo.js')
   .example('batonjs --sdk codebuddy ./workflows/demo.js')
   .example('batonjs --args \'{"target": "src/"}\' ./workflows/demo.js')
   .example('batonjs --budget 5.0 --concurrency 5 ./workflows/demo.js')
   .example('batonjs --timeout 5 ./workflows/demo.js')
+  .example('batonjs --sdk codex --effort high ./workflows/demo.js')
   .action((script: string | undefined, options: Record<string, unknown>) => {
     if (script === undefined) {
       cli.outputHelp()
@@ -65,10 +70,20 @@ cli
     let sdk: SdkName | undefined
     if (options['sdk'] !== undefined) {
       const sdkName = String(options['sdk'])
-      if (sdkName !== 'anthropic' && sdkName !== 'codebuddy') {
-        fatal(`--sdk must be 'anthropic' or 'codebuddy', got: ${sdkName}`)
+      if (sdkName !== 'anthropic' && sdkName !== 'codebuddy' && sdkName !== 'codex') {
+        fatal(`--sdk must be 'anthropic', 'codebuddy', or 'codex', got: ${sdkName}`)
       }
       sdk = sdkName
+    }
+
+    // --effort: validate level
+    let effort: 'medium' | 'high' | 'xhigh' | undefined
+    if (options['effort'] !== undefined) {
+      const effortLevel = String(options['effort'])
+      if (effortLevel !== 'medium' && effortLevel !== 'high' && effortLevel !== 'xhigh') {
+        fatal(`--effort must be 'medium', 'high', or 'xhigh', got: ${effortLevel}`)
+      }
+      effort = effortLevel
     }
 
     const engineOpts: EngineOptions = {
@@ -80,6 +95,7 @@ cli
     if (maxConcurrency !== undefined) engineOpts.maxConcurrency = maxConcurrency
     if (options['model'] !== undefined) engineOpts.defaultModel = String(options['model'])
     if (sdk !== undefined) engineOpts.sdk = sdk
+    if (effort !== undefined) engineOpts.effort = effort
     if (options['timeout'] !== undefined) {
       const minutes = parseFloat(String(options['timeout']))
       if (Number.isNaN(minutes) || minutes <= 0) {
