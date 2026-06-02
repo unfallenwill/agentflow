@@ -64,6 +64,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.160",
     "@tencent-ai/agent-sdk": "^0.3.162",
     "ajv": "^8.20.0",
     "json5": "^2.2.3",

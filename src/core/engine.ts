@@ -19,6 +19,8 @@ import { parallelExecute } from '../utils/parallel.js'
 import { pipelineExecute } from '../utils/pipeline.js'
 import { extractMeta } from '../utils/extract-meta.js'
 import { executeAgent } from './agent.js'
+import { createSdkProvider } from './sdk.js'
+import type { SdkProvider } from './sdk.js'
 
 /** @internal Brand symbol for SharedState discrimination */
 const _sharedBrand: unique symbol = Symbol('agentflow:shared-state')
@@ -30,6 +32,7 @@ interface SharedState {
   budget: BudgetTracker
   semaphore: Semaphore
   depth: number
+  sdk: SdkProvider
 }
 
 // AsyncFunction constructor for executing script bodies
@@ -54,6 +57,8 @@ export class Engine {
   private readonly budget: BudgetTracker
   private readonly semaphore: Semaphore
   private readonly depth: number
+  /** Shared state from parent (child engines only) */
+  private readonly shared: SharedState | undefined
 
   constructor(opts: EngineOptions)
   /** @internal Create a child engine sharing parent state */
@@ -62,17 +67,19 @@ export class Engine {
     this.opts = opts
 
     if (shared !== undefined && _sharedBrand in shared) {
-      // Child engine: share bus, budget, semaphore from parent
+      // Child engine: share bus, budget, semaphore, sdk from parent
       this.bus = shared.bus
       this.budget = shared.budget
       this.semaphore = shared.semaphore
       this.depth = shared.depth
+      this.shared = shared
     } else {
       // Root engine: create fresh state
       this.bus = new EngineEventBus()
       this.budget = new BudgetTracker(opts.maxBudgetUsd ?? null, this.bus)
       this.semaphore = new Semaphore(opts.maxConcurrency ?? 10)
       this.depth = 0
+      this.shared = undefined
     }
   }
 
@@ -85,6 +92,12 @@ export class Engine {
   async run(): Promise<EngineRunResult> {
     const startTime = Date.now()
 
+    // 0. Resolve SDK provider
+    const sdk: SdkProvider =
+      this.shared !== undefined
+        ? this.shared.sdk
+        : await createSdkProvider(this.opts.sdk ?? 'anthropic')
+
     // 1. Load and parse script
     const loaded = await this.loadScript(this.opts.scriptPath)
     if (!loaded.ok) {
@@ -95,7 +108,7 @@ export class Engine {
     this.bus.emit({ kind: 'workflow_start', meta })
 
     // 2. Build script globals
-    const globals = this.createGlobals()
+    const globals = this.createGlobals(sdk)
 
     // 3. Execute script body as an async function
     const execResult = await this.executeBody(body, globals)
@@ -122,13 +135,14 @@ export class Engine {
 
   // ── Internals ──────────────────────────────────────────────────────
 
-  private createGlobals(): ScriptGlobals {
+  private createGlobals(sdk: SdkProvider): ScriptGlobals {
     return {
       agent: <T = unknown>(prompt: string, opts?: AgentOpts) =>
         executeAgent<T>(prompt, opts, {
           semaphore: this.semaphore,
           budget: this.budget,
           bus: this.bus,
+          sdk,
           cwd: this.opts.cwd,
           defaultModel: this.opts.defaultModel,
           permissionMode: this.opts.permissionMode,
@@ -166,19 +180,23 @@ export class Engine {
       args: this.opts.args ?? {},
 
       // ── Nested workflow ─────────────────────────────────────────────
-      // Creates a child Engine sharing bus, budget, semaphore.
+      // Creates a child Engine sharing bus, budget, semaphore, sdk.
       // Only one level of nesting allowed (depth 0 → 1).
       workflow: (ref: WorkflowRef, childArgs?: unknown) =>
-        this.executeChildWorkflow(ref, childArgs),
+        this.executeChildWorkflow(ref, childArgs, sdk),
     }
   }
 
   /**
    * Execute a nested child workflow.
-   * Shares the parent's bus, budget, semaphore, signal.
+   * Shares the parent's bus, budget, semaphore, sdk, signal.
    * Throws if nesting depth exceeds 1.
    */
-  private async executeChildWorkflow(ref: WorkflowRef, childArgs?: unknown): Promise<unknown> {
+  private async executeChildWorkflow(
+    ref: WorkflowRef,
+    childArgs: unknown | undefined,
+    sdk: SdkProvider,
+  ): Promise<unknown> {
     if (this.depth >= 1) {
       throw new Error('workflow() nesting limit exceeded: only one level of nesting is allowed')
     }
@@ -197,6 +215,7 @@ export class Engine {
       budget: this.budget,
       semaphore: this.semaphore,
       depth: this.depth + 1,
+      sdk,
     })
 
     const result = await childEngine.run()

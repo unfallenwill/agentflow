@@ -1,8 +1,7 @@
-import { query } from '@tencent-ai/agent-sdk'
-import type { Options, ResultMessage } from '@tencent-ai/agent-sdk'
 import Ajv from 'ajv'
 import type { AgentContext } from './context.js'
 import type { AgentOpts } from '../types.js'
+import type { SdkQueryOptions, SdkResultMessage } from './sdk.js'
 
 /** Default timeout for a single agent call (ms) */
 const DEFAULT_AGENT_TIMEOUT_MS = 120_000
@@ -20,7 +19,7 @@ const RETRY_BASE_DELAY_MS = 1_000
 const RETRY_MAX_DELAY_MS = 30_000
 
 /** Internal discriminated return from the query IIFE */
-type QueryOutput = { ok: true; value: ResultMessage | null } | { ok: false; error: string }
+type QueryOutput = { ok: true; value: SdkResultMessage | null } | { ok: false; error: string }
 
 /** Query execution result including retry metadata */
 interface QueryAttempt {
@@ -63,15 +62,16 @@ function backoffDelay(attempt: number): number {
  * Execute a single SDK query attempt with timeout protection.
  */
 async function executeQueryAttempt(
+  sdk: AgentContext['sdk'],
   prompt: string,
-  sdkOpts: Options,
+  sdkOpts: SdkQueryOptions,
   controller: AbortController,
   timeoutMs: number,
 ): Promise<QueryAttempt> {
   const TIMEOUT_SENTINEL = Symbol('timeout')
   let timeoutId: ReturnType<typeof setTimeout> | undefined
 
-  const q = query({ prompt, options: { ...sdkOpts, abortController: controller } })
+  const q = sdk.query({ prompt, options: { ...sdkOpts, abortController: controller } })
 
   const timeoutPromise = new Promise<typeof TIMEOUT_SENTINEL>((resolve) => {
     timeoutId = setTimeout(() => {
@@ -82,10 +82,10 @@ async function executeQueryAttempt(
 
   const queryPromise = (async (): Promise<QueryOutput> => {
     try {
-      let resultMsg: ResultMessage | null = null
+      let resultMsg: SdkResultMessage | null = null
       for await (const message of q) {
-        if (message.type === 'result') {
-          resultMsg = message as ResultMessage
+        if ('type' in message && message['type'] === 'result') {
+          resultMsg = message as unknown as SdkResultMessage
         }
       }
       return { ok: true, value: resultMsg }
@@ -155,7 +155,7 @@ export async function executeAgent<T = unknown>(
 
   try {
     // Build SDK options
-    const sdkOpts: Options = {
+    const sdkOpts: SdkQueryOptions = {
       permissionMode: ctx.permissionMode ?? 'bypassPermissions',
       abortController: controller,
     }
@@ -227,6 +227,7 @@ export async function executeAgent<T = unknown>(
       }
 
       const attemptResult = await executeQueryAttempt(
+        ctx.sdk,
         effectivePrompt,
         sdkOpts,
         controller,
@@ -290,8 +291,7 @@ export async function executeAgent<T = unknown>(
 
     // Error subtypes (non-success)
     if (resultMsg.subtype !== 'success') {
-      const errPayload = resultMsg as unknown as { errors?: string[] }
-      const errors = errPayload.errors ?? ['Unknown execution error']
+      const errors = resultMsg.errors ?? ['Unknown execution error']
       ctx.bus.emit({
         kind: 'agent_error',
         label,
@@ -301,7 +301,10 @@ export async function executeAgent<T = unknown>(
     }
 
     // At this point resultMsg is the success variant with .result and .structured_output
-    const successMsg = resultMsg as ResultMessage & { result: string; structured_output?: unknown }
+    const successMsg = resultMsg as SdkResultMessage & {
+      result: string
+      structured_output?: unknown
+    }
 
     // Adjust budget: replace reservation with actual cost
     const costUsd = successMsg.total_cost_usd

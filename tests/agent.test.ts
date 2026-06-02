@@ -1,30 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { AgentContext } from '../src/core/context.js'
 import type { AgentOpts } from '../src/types.js'
-import type { Options, ResultMessage } from '@tencent-ai/agent-sdk'
+import type { SdkQueryOptions } from '../src/core/sdk.js'
 import { Semaphore } from '../src/utils/semaphore.js'
 import { BudgetTracker } from '../src/core/budget.js'
 import { EngineEventBus } from '../src/core/events.js'
 import { executeAgent } from '../src/core/agent.js'
 
-// ── Mock the SDK ──────────────────────────────────────────────────────
+// ── Mock the SDK provider ──────────────────────────────────────────────
 
-vi.mock('@tencent-ai/agent-sdk', () => ({
-  query: vi.fn(),
-}))
-
-// Capture the sdkOpts passed to query() for assertion
-let capturedSdkOpts: Options | undefined
-
-interface MockMessage {
-  type: string
-  subtype?: string
-  result?: string
-  structured_output?: unknown
-  total_cost_usd?: number
-  errors?: string[]
-  [key: string]: unknown
-}
+const queryMock = vi.fn()
 
 function createMockQuery(messages: MockMessage[]) {
   const iterator = {
@@ -40,13 +25,28 @@ function createMockQuery(messages: MockMessage[]) {
   })
 }
 
+const mockProvider = { query: queryMock }
+
+// Capture the sdkOpts passed to query() for assertion
+let capturedSdkOpts: SdkQueryOptions | undefined
+
+interface MockMessage {
+  type: string
+  subtype?: string
+  result?: string
+  structured_output?: unknown
+  total_cost_usd?: number
+  errors?: string[]
+  [key: string]: unknown
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────
 
 function makeContext(overrides?: Partial<AgentContext>): AgentContext {
   const bus = new EngineEventBus()
   const budget = new BudgetTracker(null, bus) // null = unlimited by default
   const semaphore = new Semaphore(10)
-  return { bus, budget, semaphore, ...overrides }
+  return { bus, budget, semaphore, sdk: mockProvider, ...overrides }
 }
 
 function successResult(overrides?: Partial<MockMessage>): MockMessage {
@@ -68,14 +68,10 @@ function collectEvents(bus: EngineEventBus) {
 // ── Tests ─────────────────────────────────────────────────────────────
 
 describe('executeAgent', () => {
-  let queryMock: ReturnType<typeof vi.fn>
-
-  beforeEach(async () => {
-    const sdk = await import('@tencent-ai/agent-sdk')
-    queryMock = vi.mocked(sdk.query)
+  beforeEach(() => {
     capturedSdkOpts = undefined
 
-    queryMock.mockImplementation(({ options }: { prompt: string; options: Options }) => {
+    queryMock.mockImplementation(({ options }: { prompt: string; options: SdkQueryOptions }) => {
       capturedSdkOpts = options
       return createMockQuery([successResult()])
     })
@@ -283,7 +279,7 @@ describe('executeAgent', () => {
     // Budget of 0.005 — the call costs 0.01, exceeding it
     const budget = new BudgetTracker(0.005, bus)
     const semaphore = new Semaphore(10)
-    const ctx: AgentContext = { bus, budget, semaphore }
+    const ctx: AgentContext = { bus, budget, semaphore, sdk: mockProvider }
     const events = collectEvents(bus)
 
     const result = await executeAgent('test', undefined, ctx)
@@ -322,7 +318,13 @@ describe('executeAgent', () => {
     const semaphore = new Semaphore(10)
     const controller = new AbortController()
     controller.abort()
-    const ctx: AgentContext = { bus, budget, semaphore, signal: controller.signal }
+    const ctx: AgentContext = {
+      bus,
+      budget,
+      semaphore,
+      sdk: mockProvider,
+      signal: controller.signal,
+    }
 
     const events = collectEvents(bus)
     const result = await executeAgent('test', undefined, ctx)
@@ -342,10 +344,16 @@ describe('executeAgent', () => {
     const budget = new BudgetTracker(null, bus)
     const semaphore = new Semaphore(10)
     const controller = new AbortController()
-    const ctx: AgentContext = { bus, budget, semaphore, signal: controller.signal }
+    const ctx: AgentContext = {
+      bus,
+      budget,
+      semaphore,
+      sdk: mockProvider,
+      signal: controller.signal,
+    }
 
     // Make query hang so we can abort mid-flight
-    queryMock.mockImplementation(({ options }: { prompt: string; options: Options }) => {
+    queryMock.mockImplementation(({ options }: { prompt: string; options: SdkQueryOptions }) => {
       capturedSdkOpts = options
       const iterator = {
         async *[Symbol.asyncIterator]() {
@@ -384,7 +392,13 @@ describe('executeAgent', () => {
     const bus = new EngineEventBus()
     const budget = new BudgetTracker(null, bus)
     const semaphore = new Semaphore(10)
-    const ctx: AgentContext = { bus, budget, semaphore, signal: parentController.signal }
+    const ctx: AgentContext = {
+      bus,
+      budget,
+      semaphore,
+      sdk: mockProvider,
+      signal: parentController.signal,
+    }
 
     // Track listener count via a spy on addEventListener/removeEventListener
     const addSpy = vi.spyOn(parentController.signal, 'addEventListener')
@@ -541,7 +555,7 @@ describe('executeAgent', () => {
     vi.useFakeTimers()
 
     // Create a query that never resolves (hangs)
-    queryMock.mockImplementation(({ options }: { prompt: string; options: Options }) => {
+    queryMock.mockImplementation(({ options }: { prompt: string; options: SdkQueryOptions }) => {
       capturedSdkOpts = options
       const iterator = {
         async *[Symbol.asyncIterator]() {
@@ -587,7 +601,7 @@ describe('executeAgent', () => {
       spent: vi.fn().mockReturnValue(0),
     } as unknown as InstanceType<typeof BudgetTracker>
     const semaphore = new Semaphore(10)
-    const ctx: AgentContext = { bus, budget: badBudget, semaphore }
+    const ctx: AgentContext = { bus, budget: badBudget, semaphore, sdk: mockProvider }
     const events = collectEvents(bus)
 
     const result = await executeAgent('test', undefined, ctx)
@@ -644,7 +658,7 @@ describe('executeAgent', () => {
     const bus = new EngineEventBus()
     const budget = new BudgetTracker(100, bus)
     const semaphore = new Semaphore(10)
-    const ctx: AgentContext = { bus, budget, semaphore }
+    const ctx: AgentContext = { bus, budget, semaphore, sdk: mockProvider }
 
     await executeAgent('test', undefined, ctx)
 
@@ -655,7 +669,7 @@ describe('executeAgent', () => {
     const bus = new EngineEventBus()
     const budget = new BudgetTracker(5.0, bus)
     const semaphore = new Semaphore(10)
-    const ctx: AgentContext = { bus, budget, semaphore }
+    const ctx: AgentContext = { bus, budget, semaphore, sdk: mockProvider }
 
     await executeAgent('test', undefined, ctx)
 
@@ -674,7 +688,7 @@ describe('executeAgent', () => {
     // Budget of 0 — nothing can be reserved
     const budget = new BudgetTracker(0, bus)
     const semaphore = new Semaphore(10)
-    const ctx: AgentContext = { bus, budget, semaphore }
+    const ctx: AgentContext = { bus, budget, semaphore, sdk: mockProvider }
     const events = collectEvents(bus)
 
     const result = await executeAgent('test', undefined, ctx)
@@ -692,7 +706,7 @@ describe('executeAgent', () => {
     // Budget of 0.02 — each call costs 0.01, so only one should succeed
     const budget = new BudgetTracker(0.02, bus)
     const semaphore = new Semaphore(10)
-    const ctx: AgentContext = { bus, budget, semaphore }
+    const ctx: AgentContext = { bus, budget, semaphore, sdk: mockProvider }
 
     // Both agents attempt to reserve full remaining budget
     const [resultA, resultB] = await Promise.all([
@@ -791,7 +805,13 @@ describe('executeAgent', () => {
     const budget = new BudgetTracker(null, bus)
     const semaphore = new Semaphore(10)
     const controller = new AbortController()
-    const ctx: AgentContext = { bus, budget, semaphore, signal: controller.signal }
+    const ctx: AgentContext = {
+      bus,
+      budget,
+      semaphore,
+      sdk: mockProvider,
+      signal: controller.signal,
+    }
 
     const promise = executeAgent('test', { maxRetries: 3 }, ctx)
 

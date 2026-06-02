@@ -6,7 +6,7 @@ const cliPath = resolve(__dirname, '../src/cli.ts')
 
 function runCli(args: string[]): { stdout: string; stderr: string; exitCode: number } {
   try {
-    const stdout = execFileSync('npx', ['tsx', cliPath, ...args], {
+    const stdout = execFileSync('node', ['--import', 'tsx', cliPath, ...args], {
       encoding: 'utf-8',
       timeout: 10_000,
     })
@@ -43,5 +43,22 @@ describe('CLI argument validation', () => {
   it('accepts --concurrency with valid integer', () => {
     const result = runCli(['dummy.js', '--concurrency', '5'])
     expect(result.stderr).not.toContain('requires an integer')
+  })
+
+  it('rejects --sdk with invalid value', () => {
+    const result = runCli(['dummy.js', '--sdk', 'invalid'])
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain("must be 'anthropic' or 'codebuddy'")
+  })
+
+  it('accepts --sdk anthropic', () => {
+    const result = runCli(['dummy.js', '--sdk', 'anthropic'])
+    // Will fail because dummy.js doesn't exist, but should NOT fail on --sdk
+    expect(result.stderr).not.toContain('--sdk must be')
+  })
+
+  it('accepts --sdk codebuddy', () => {
+    const result = runCli(['dummy.js', '--sdk', 'codebuddy'])
+    expect(result.stderr).not.toContain('--sdk must be')
   })
 })

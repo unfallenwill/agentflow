@@ -1,8 +1,14 @@
 #!/usr/bin/env node
 import { Engine } from './index.js'
-import type { EngineOptions } from './index.js'
+import type { EngineOptions, SdkName } from './index.js'
 
 const argv = process.argv.slice(2)
+
+/** Write a message to stderr synchronously and exit with code 1. */
+function fatal(message: string): never {
+  process.stderr.write(`${message}\n`)
+  process.exit(1)
+}
 
 if (argv.length === 0 || argv[0] === '--help' || argv[0] === '-h') {
   console.log(`
@@ -14,6 +20,7 @@ Options:
   --concurrency <n> Max concurrent agents (default: 10)
   --cwd <dir>      Working directory for agents (default: .)
   --model <model>  Default model for agents
+  --sdk <name>     SDK backend: 'anthropic' (default) or 'codebuddy'
   --help, -h       Show this help message
 
 Examples:
@@ -30,6 +37,7 @@ let maxBudgetUsd: number | undefined
 let maxConcurrency: number | undefined
 let cwd: string | undefined
 let defaultModel: string | undefined
+let sdk: SdkName | undefined
 
 for (let i = 1; i < argv.length; i++) {
   const flag = argv[i] as string
@@ -37,61 +45,62 @@ for (let i = 1; i < argv.length; i++) {
   switch (flag) {
     case '--args':
       if (next === undefined) {
-        console.error('--args requires a JSON value')
-        process.exit(1)
+        fatal('--args requires a JSON value')
       }
       try {
         workflowArgs = JSON.parse(next)
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
-        console.error(`Invalid JSON for --args: ${next}\nParse error: ${msg}`)
-        process.exit(1)
+        fatal(`Invalid JSON for --args: ${next}\nParse error: ${msg}`)
       }
       i++
       break
     case '--budget':
       if (next === undefined) {
-        console.error('--budget requires a value')
-        process.exit(1)
+        fatal('--budget requires a value')
       }
       maxBudgetUsd = parseFloat(next)
       if (Number.isNaN(maxBudgetUsd)) {
-        console.error(`--budget requires a number, got: ${next}`)
-        process.exit(1)
+        fatal(`--budget requires a number, got: ${next}`)
       }
       i++
       break
     case '--concurrency':
       if (next === undefined) {
-        console.error('--concurrency requires a value')
-        process.exit(1)
+        fatal('--concurrency requires a value')
       }
       maxConcurrency = parseInt(next, 10)
       if (Number.isNaN(maxConcurrency)) {
-        console.error(`--concurrency requires an integer, got: ${next}`)
-        process.exit(1)
+        fatal(`--concurrency requires an integer, got: ${next}`)
       }
       i++
       break
     case '--cwd':
       if (next === undefined) {
-        console.error('--cwd requires a path')
-        process.exit(1)
+        fatal('--cwd requires a path')
       }
       cwd = next
       i++
       break
     case '--model':
       if (next === undefined) {
-        console.error('--model requires a value')
-        process.exit(1)
+        fatal('--model requires a value')
       }
       defaultModel = next
       i++
       break
+    case '--sdk':
+      if (next === undefined) {
+        fatal('--sdk requires a value')
+      }
+      if (next !== 'anthropic' && next !== 'codebuddy') {
+        fatal(`--sdk must be 'anthropic' or 'codebuddy', got: ${next}`)
+      }
+      sdk = next
+      i++
+      break
     default:
-      console.error(`Unknown option: ${flag}`)
-      process.exit(1)
+      fatal(`Unknown option: ${flag}`)
   }
 }
 
@@ -103,6 +112,7 @@ if (workflowArgs !== undefined) engineOpts.args = workflowArgs
 if (maxBudgetUsd !== undefined) engineOpts.maxBudgetUsd = maxBudgetUsd
 if (maxConcurrency !== undefined) engineOpts.maxConcurrency = maxConcurrency
 if (defaultModel !== undefined) engineOpts.defaultModel = defaultModel
+if (sdk !== undefined) engineOpts.sdk = sdk
 
 const engine = new Engine(engineOpts)
 
@@ -160,6 +170,5 @@ const result = await engine.run()
 if (result.ok) {
   console.log('\n📦', JSON.stringify(result.value.result, null, 2))
 } else {
-  console.error(`\n💥 ${result.error.message}`)
-  process.exit(1)
+  fatal(`\n💥 ${result.error.message}`)
 }

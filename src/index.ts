@@ -1,4 +1,4 @@
-// AgentFlow — Workflow engine powered by CodeBuddy Agent SDK
+// AgentFlow — Workflow engine powered by Agent SDKs
 
 // Engine
 export { Engine } from './core/engine.js'
@@ -20,6 +20,16 @@ export type {
   ScriptMeta,
   WorkflowRef,
 } from './types.js'
+
+// SDK adapter
+export { createSdkProvider } from './core/sdk.js'
+export type {
+  SdkName,
+  SdkProvider,
+  SdkQueryOptions,
+  SdkQueryHandle,
+  SdkResultMessage,
+} from './core/sdk.js'
 
 // Event bus
 export { EngineEventBus } from './core/events.js'

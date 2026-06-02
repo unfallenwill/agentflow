@@ -1,3 +1,4 @@
+import type { SdkName } from './core/sdk.js'
 import type { Result } from './utils/result.js'
 
 // ── Script-facing types (globals injected into workflow scripts) ─────
@@ -72,6 +73,8 @@ export interface EngineOptions {
   defaultModel?: string
   /** Permission mode for all agent queries */
   permissionMode?: PermissionMode
+  /** SDK backend to use. Default: 'anthropic' */
+  sdk?: SdkName
   /** AbortSignal to cancel the entire workflow */
   signal?: AbortSignal
 }
