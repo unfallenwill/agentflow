@@ -44,7 +44,7 @@ export type SdkResultMessage =
     }
   | {
       type: 'result'
-      subtype: string
+      subtype: Exclude<string, 'success'>
       total_cost_usd: number
       result?: undefined
       structured_output?: undefined

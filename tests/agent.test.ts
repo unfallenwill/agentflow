@@ -274,7 +274,7 @@ describe('executeAgent', () => {
 
   // ── (i) Budget exceeded ───────────────────────────────────────────
 
-  it('returns null when budget is exceeded after call', async () => {
+  it('returns valid result even when budget is exceeded after call', async () => {
     const bus = new EngineEventBus()
     // Budget of 0.005 — the call costs 0.01, exceeding it
     const budget = new BudgetTracker(0.005, bus)
@@ -284,12 +284,19 @@ describe('executeAgent', () => {
 
     const result = await executeAgent('test', undefined, ctx)
 
-    expect(result).toBeNull()
-    expect(events.find((e) => e.kind === 'agent_error')).toEqual({
-      kind: 'agent_error',
-      label: undefined,
-      error: 'Budget exceeded after agent call',
-    })
+    // The result is valid — we already paid for it, discarding would waste
+    // both the result and the budget already spent.
+    expect(result).toEqual({ value: 42 })
+
+    // agent_end should still be emitted for the successful call
+    const endEvent = events.find((e) => e.kind === 'agent_end')
+    expect(endEvent).toBeDefined()
+
+    // No agent_error should be emitted — the call succeeded.
+    // Budget enforcement happens at reservation time (top of executeAgent),
+    // preventing subsequent calls from proceeding.
+    const errorEvent = events.find((e) => e.kind === 'agent_error')
+    expect(errorEvent).toBeUndefined()
   })
 
   // ── (j) Model from opts ──────────────────────────────────────────
@@ -665,7 +672,7 @@ describe('executeAgent', () => {
     expect(budget.spent()).toBeCloseTo(0.01)
   })
 
-  it('passes remaining budget to sdkOpts when budget is set', async () => {
+  it('passes fair-share budget to sdkOpts when budget is set', async () => {
     const bus = new EngineEventBus()
     const budget = new BudgetTracker(5.0, bus)
     const semaphore = new Semaphore(10)
@@ -673,7 +680,8 @@ describe('executeAgent', () => {
 
     await executeAgent('test', undefined, ctx)
 
-    expect(capturedSdkOpts?.maxBudgetUsd).toBe(5.0)
+    // Fair-share: remaining / semaphore.capacity = 5.0 / 10 = 0.5
+    expect(capturedSdkOpts?.maxBudgetUsd).toBe(0.5)
   })
 
   it('does not set maxBudgetUsd when budget is unlimited', async () => {
@@ -701,28 +709,28 @@ describe('executeAgent', () => {
     })
   })
 
-  it('prevents concurrent agents from exceeding budget', async () => {
+  it('allows concurrent agents with fair-share budget allocation', async () => {
     const bus = new EngineEventBus()
-    // Budget of 0.02 — each call costs 0.01, so only one should succeed
+    // Budget of 0.02 — each call costs 0.01, fair-share gives each 0.001
     const budget = new BudgetTracker(0.02, bus)
     const semaphore = new Semaphore(10)
     const ctx: AgentContext = { bus, budget, semaphore, sdk: mockProvider }
 
-    // Both agents attempt to reserve full remaining budget
+    // Both agents reserve their fair-share slice (0.02/10 = 0.002 each)
     const [resultA, resultB] = await Promise.all([
       executeAgent('test-a', undefined, ctx),
       executeAgent('test-b', undefined, ctx),
     ])
 
-    // Exactly one should succeed, one should fail
+    // Both succeed — valid results are not discarded even when actual cost
+    // exceeds the reserved fair-share slice
     const results = [resultA, resultB]
     const successes = results.filter((r) => r !== null)
-    const failures = results.filter((r) => r === null)
-    expect(successes).toHaveLength(1)
-    expect(failures).toHaveLength(1)
+    expect(successes).toHaveLength(2)
 
-    // Total spend should not exceed budget
-    expect(budget.spent()).toBeLessThanOrEqual(0.02)
+    // Total spend may exceed the original budget — this is the trade-off:
+    // we honor already-incurred costs rather than discarding valid results
+    expect(budget.spent()).toBeCloseTo(0.02)
   })
 
   it('strips markdown fences and parses JSON from result', async () => {

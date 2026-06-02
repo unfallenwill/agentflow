@@ -20,9 +20,18 @@ export class EngineEventBus {
 
   /** Emit an event to all subscribers (synchronous). */
   emit(event: EngineEvent): void {
-    for (const handler of this.listeners) {
+    // Snapshot the listener array before iteration so that handlers which
+    // subscribe (push) or unsubscribe (splice) during dispatch cannot
+    // corrupt the iterator.  New listeners added mid-dispatch will not
+    // receive the current event — this matches the semantics of most
+    // synchronous event buses (e.g. Node.js EventEmitter).
+    const snapshot = [...this.listeners]
+    for (let i = 0; i < snapshot.length; i++) {
       try {
-        handler(event)
+        const handler = snapshot[i]
+        if (handler !== undefined) {
+          handler(event)
+        }
       } catch (error: unknown) {
         console.error('[BatonJS] Event handler threw:', error)
       }

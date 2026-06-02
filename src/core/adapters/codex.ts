@@ -118,8 +118,75 @@ interface CodexRunResult {
   } | null
 }
 
+// ── Cost estimation ───────────────────────────────────────────────────
+
+/**
+ * Per-million-token pricing for known OpenAI model families used by Codex.
+ *
+ * Ordered from most-specific prefix to least-specific so that
+ * `resolvePricing` matches `gpt-4o-mini` before `gpt-4o`.
+ *
+ * Sources: OpenAI pricing page (June 2026).
+ * These values will need periodic updates as OpenAI adjusts pricing.
+ */
+const MODEL_PRICING: readonly {
+  readonly prefix: string
+  readonly input: number
+  readonly cachedInput: number
+  readonly output: number
+}[] = [
+  // o4-mini / codex-mini family
+  { prefix: 'o4-mini', input: 1.1, cachedInput: 0.275, output: 4.4 },
+  { prefix: 'codex-mini', input: 1.1, cachedInput: 0.275, output: 4.4 },
+  // GPT-4o family (longer prefix first!)
+  { prefix: 'gpt-4o-mini', input: 0.15, cachedInput: 0.075, output: 0.6 },
+  { prefix: 'gpt-4o', input: 2.5, cachedInput: 1.25, output: 10.0 },
+]
+
+/** Fallback pricing when the model name is unrecognised — uses o4-mini rates. */
+const DEFAULT_PRICING = {
+  input: 1.1,
+  cachedInput: 0.275,
+  output: 4.4,
+} as const
+
+/** Resolve per-million-token pricing for the given model name. */
+function resolvePricing(model: string | undefined): {
+  input: number
+  cachedInput: number
+  output: number
+} {
+  if (model !== undefined) {
+    for (const entry of MODEL_PRICING) {
+      if (model.startsWith(entry.prefix)) return entry
+    }
+  }
+  return DEFAULT_PRICING
+}
+
+/**
+ * Estimate USD cost from Codex token usage.
+ *
+ * `output_tokens` already includes reasoning tokens, so we don't add
+ * `reasoning_output_tokens` on top.
+ */
+function estimateCost(usage: CodexRunResult['usage'], model: string | undefined): number {
+  if (usage === null) return 0
+  const pricing = resolvePricing(model)
+  return (
+    (usage.input_tokens * pricing.input +
+      usage.cached_input_tokens * pricing.cachedInput +
+      usage.output_tokens * pricing.output) /
+    1_000_000
+  )
+}
+
 /** Normalize a successful Codex turn into an SdkResultMessage. */
-function toSdkResultMessage(result: CodexRunResult, hasSchema: boolean): SdkResultMessage {
+function toSdkResultMessage(
+  result: CodexRunResult,
+  hasSchema: boolean,
+  model: string | undefined,
+): SdkResultMessage {
   let structuredOutput: unknown = undefined
   if (hasSchema) {
     try {
@@ -132,7 +199,7 @@ function toSdkResultMessage(result: CodexRunResult, hasSchema: boolean): SdkResu
   return {
     type: 'result',
     subtype: 'success',
-    total_cost_usd: 0,
+    total_cost_usd: estimateCost(result.usage, model),
     result: result.finalResponse,
     ...(structuredOutput !== undefined && { structured_output: structuredOutput }),
   }
@@ -149,7 +216,7 @@ function toSdkResultMessage(result: CodexRunResult, hasSchema: boolean): SdkResu
  *
  * Design decisions:
  * - Uses buffered `thread.run()` (not `runStreamed()`) for simplicity.
- * - Reports `total_cost_usd` as 0 (Codex provides token usage, not dollar costs).
+ * - Estimates `total_cost_usd` from token usage using known OpenAI model pricing.
  * - Cancellation via `AbortSignal` wired through `TurnOptions.signal`.
  */
 export async function createCodexAdapter(): Promise<SdkProvider> {
@@ -176,14 +243,17 @@ export async function createCodexAdapter(): Promise<SdkProvider> {
           const errorMsg: SdkResultMessage = {
             type: 'result',
             subtype: 'error',
-            total_cost_usd: 0,
+            total_cost_usd: 0, // turn threw — no usage data available
             errors: [message],
           }
           yield errorMsg as unknown as Record<string, unknown>
           return
         }
 
-        yield toSdkResultMessage(result, hasSchema) as unknown as Record<string, unknown>
+        yield toSdkResultMessage(result, hasSchema, options.model) as unknown as Record<
+          string,
+          unknown
+        >
       }
 
       const gen = iterate()

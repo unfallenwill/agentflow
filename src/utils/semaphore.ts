@@ -20,6 +20,11 @@ export class Semaphore {
     }
   }
 
+  /** Maximum number of concurrent holders this semaphore allows. */
+  get capacity(): number {
+    return this.max
+  }
+
   async acquire(): Promise<() => void> {
     if (this.running < this.max) {
       this.running++

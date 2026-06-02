@@ -140,7 +140,16 @@ export async function executeAgent<T = unknown>(
 ): Promise<T | null> {
   const label = opts?.label
   const phase = opts?.phase
-  const maxRetries = opts?.maxRetries ?? DEFAULT_MAX_RETRIES
+  const rawMaxRetries = opts?.maxRetries ?? DEFAULT_MAX_RETRIES
+  if (!Number.isInteger(rawMaxRetries) || rawMaxRetries < 0) {
+    ctx.bus.emit({
+      kind: 'agent_error',
+      label,
+      error: `maxRetries must be a non-negative integer, got ${rawMaxRetries}`,
+    })
+    return null
+  }
+  const maxRetries: number = rawMaxRetries
 
   ctx.bus.emit({ kind: 'agent_start', label, phase })
 
@@ -190,7 +199,9 @@ export async function executeAgent<T = unknown>(
     }
 
     // ── Budget reservation ──────────────────────────────────────────────
-    // For limited budgets: atomically reserve to prevent concurrent overshoot.
+    // For limited budgets: atomically reserve a fair-share slice so
+    // concurrent agents each get a proportional budget rather than one
+    // agent grabbing everything and starving its siblings.
     // For unlimited budgets: skip reservation, record cost post-call.
     const isLimited = ctx.budget.remaining() !== null
 
@@ -200,14 +211,17 @@ export async function executeAgent<T = unknown>(
         ctx.bus.emit({ kind: 'agent_error', label, error: 'Budget insufficient for agent call' })
         return null
       }
-      // Reserve the full remaining budget pessimistically
-      if (!ctx.budget.tryAcquire(remaining)) {
+      // Fair-share: divide remaining budget by semaphore capacity so that
+      // parallel agents can all proceed. Unused reservation is returned via
+      // adjust() after the actual cost is known.
+      const perAgentCap = remaining / ctx.semaphore.capacity
+      if (!ctx.budget.tryAcquire(perAgentCap)) {
         ctx.bus.emit({ kind: 'agent_error', label, error: 'Budget insufficient for agent call' })
         return null
       }
       budgetReserved = true
-      reservedAmount = remaining
-      sdkOpts.maxBudgetUsd = remaining
+      reservedAmount = perAgentCap
+      sdkOpts.maxBudgetUsd = perAgentCap
     }
 
     // Forward engine-level abort signal
@@ -257,10 +271,7 @@ export async function executeAgent<T = unknown>(
         })
         // Abort-signal-aware sleep: resolves early if signal fires during backoff
         await new Promise<void>((resolve) => {
-          timeoutId = setTimeout(resolve, delay)
           if (controller.signal.aborted) {
-            clearTimeout(timeoutId)
-            timeoutId = undefined
             resolve()
             return
           }
@@ -270,8 +281,12 @@ export async function executeAgent<T = unknown>(
             resolve()
           }
           controller.signal.addEventListener('abort', onSleepAbort, { once: true })
+          timeoutId = setTimeout(() => {
+            controller.signal.removeEventListener('abort', onSleepAbort)
+            timeoutId = undefined
+            resolve()
+          }, delay)
         })
-        timeoutId = undefined
       }
     }
 
@@ -303,6 +318,18 @@ export async function executeAgent<T = unknown>(
         label,
         error: errors.join('; '),
       })
+
+      // Adjust budget: even failed calls incur real cost via total_cost_usd.
+      // Without this, the finally block would release the full reservation as
+      // if zero was spent, causing silent budget undertracking.
+      const costUsd = resultMsg.total_cost_usd
+      if (budgetReserved) {
+        ctx.budget.adjust(reservedAmount, costUsd)
+        budgetReserved = false
+      } else {
+        ctx.budget.record(costUsd)
+      }
+
       return null
     }
 
@@ -324,23 +351,46 @@ export async function executeAgent<T = unknown>(
     const duration = Date.now() - startTime
     ctx.bus.emit({ kind: 'agent_end', label, cost: costUsd, duration_ms: duration })
 
-    if (ctx.budget.isExceeded()) {
-      ctx.bus.emit({ kind: 'agent_error', label, error: 'Budget exceeded after agent call' })
-      return null
-    }
+    // Note: we intentionally do NOT check budget.isExceeded() here.
+    // The cost has already been incurred and the result is valid —
+    // discarding it would waste both the result and the budget.
+    // Subsequent calls are correctly blocked by the reservation
+    // logic at the top of executeAgent.
 
     // Extract result: prefer structured_output when schema was provided
     if (opts?.schema !== undefined && successMsg.structured_output !== undefined) {
+      const validate = ajv.compile(opts.schema)
+      if (!validate(successMsg.structured_output)) {
+        const errors = validate.errors?.map((e) => `${e.instancePath} ${e.message}`).join('; ')
+        ctx.bus.emit({
+          kind: 'agent_error',
+          label,
+          error: `Schema validation failed for structured_output: ${errors}`,
+        })
+        return null
+      }
       return successMsg.structured_output as T
     }
 
-    // Fall back: try JSON parse (strip markdown fences if present), otherwise raw string
+    // Fall back: try JSON parse (strip markdown fences if present).
+    // When schema is provided, a parse failure means the result does not match
+    // the expected type contract — return null rather than leaking a raw string.
+    // When no schema is provided (T defaults to unknown), the raw string is
+    // the best-effort result.
     const raw = successMsg.result
     let parsed: T
     try {
       const stripped = raw.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/, '')
       parsed = JSON.parse(stripped) as T
     } catch {
+      if (opts?.schema !== undefined) {
+        ctx.bus.emit({
+          kind: 'agent_error',
+          label,
+          error: 'Failed to parse agent output as JSON despite schema being provided',
+        })
+        return null
+      }
       return raw as T
     }
 

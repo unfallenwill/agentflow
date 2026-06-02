@@ -15,6 +15,9 @@ export class BudgetTracker {
 
   /** Record cost from a completed agent call. Returns false if budget exceeded. */
   record(costUsd: number): boolean {
+    if (costUsd < 0) {
+      throw new RangeError(`costUsd must be non-negative, got ${costUsd}`)
+    }
     this._spent += costUsd
     this.emitUpdate()
     return this.total === null || this._spent <= this.total

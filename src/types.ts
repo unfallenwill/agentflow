@@ -78,7 +78,7 @@ export interface EngineOptions {
   permissionMode?: PermissionMode
   /** SDK backend to use. Default: 'anthropic' */
   sdk?: SdkName
-  /** Timeout in ms for every agent call in this workflow (default: 300000) */
+  /** Timeout in ms for every agent call in this workflow (default: 300000). Must be a positive integer. */
   agentTimeoutMs?: number
   /** Default reasoning effort level for all agents */
   effort?: EffortLevel
@@ -89,7 +89,7 @@ export interface EngineOptions {
 // ── Engine output ─────────────────────────────────────────────────────
 
 export interface EngineResult {
-  success: boolean
+  success: true
   result: unknown
   totalCostUsd: number
   durationMs: number

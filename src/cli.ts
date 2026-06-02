@@ -55,6 +55,9 @@ cli
       if (Number.isNaN(maxBudgetUsd)) {
         fatal(`--budget requires a number, got: ${String(options['budget'])}`)
       }
+      if (maxBudgetUsd <= 0) {
+        fatal(`--budget must be a positive number, got: ${maxBudgetUsd}`)
+      }
     }
 
     // --concurrency: validate integer

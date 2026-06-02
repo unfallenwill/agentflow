@@ -70,6 +70,18 @@ export class Engine {
   /** @internal Create a child engine sharing parent state */
   constructor(opts: EngineOptions, shared: SharedState)
   constructor(opts: EngineOptions, shared?: SharedState) {
+    if (opts.agentTimeoutMs !== undefined && opts.agentTimeoutMs <= 0) {
+      throw new RangeError(
+        `EngineOptions.agentTimeoutMs must be a positive number, got: ${opts.agentTimeoutMs}`,
+      )
+    }
+
+    if (opts.maxBudgetUsd !== undefined && opts.maxBudgetUsd <= 0) {
+      throw new RangeError(
+        `EngineOptions.maxBudgetUsd must be a positive number, got: ${opts.maxBudgetUsd}`,
+      )
+    }
+
     this.opts = opts
 
     if (shared !== undefined && _sharedBrand in shared) {
@@ -217,6 +229,7 @@ export class Engine {
     if (this.opts.permissionMode !== undefined) childOpts.permissionMode = this.opts.permissionMode
     if (this.opts.effort !== undefined) childOpts.effort = this.opts.effort
     if (this.opts.signal !== undefined) childOpts.signal = this.opts.signal
+    if (this.opts.agentTimeoutMs !== undefined) childOpts.agentTimeoutMs = this.opts.agentTimeoutMs
 
     const childEngine = new Engine(childOpts, {
       [_sharedBrand]: _sharedBrand,
