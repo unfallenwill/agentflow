@@ -133,9 +133,10 @@ export function cleanOutput(raw: string): string {
  * Extract JSON from reasonix output that may contain thinking/reasoning
  * text before the actual JSON response.
  *
- * Strategy: find the first '{' or '[' in the text, match its balanced
- * brackets, and try JSON.parse. If that fails, advance past it and
- * try the next opener.
+ * Strategy: find ALL balanced JSON values in the text, then return the
+ * longest one. The actual response is almost always the largest JSON
+ * object, while thinking text may contain small inline JSON fragments
+ * like {"line": 42} that should be ignored.
  */
 export function extractJson(text: string): string | null {
   // Try the full text first (fast path)
@@ -170,7 +171,9 @@ export function extractJson(text: string): string | null {
     }
   }
 
-  // Scan forward: find each '{' or '[', match balanced brackets, try parse
+  // Collect all valid JSON values, then return the longest
+  const candidates: string[] = []
+
   for (let i = 0; i < text.length; i++) {
     const ch = text[i]
     if (ch !== '{' && ch !== '[') continue
@@ -210,14 +213,16 @@ export function extractJson(text: string): string | null {
     const candidate = text.slice(i, endIdx + 1)
     try {
       JSON.parse(candidate)
-      return candidate
+      candidates.push(candidate)
     } catch {
-      // Move past this opener and try the next one
       continue
     }
   }
 
-  return null
+  if (candidates.length === 0) return null
+
+  // Return the longest candidate — it's almost always the actual response
+  return candidates.reduce((a, b) => (a.length >= b.length ? a : b))
 }
 
 // ── Metrics parsing ───────────────────────────────────────────────────
