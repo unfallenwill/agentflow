@@ -67,27 +67,6 @@ describe('CLI argument validation', () => {
     expect(result.stderr).not.toContain('--sdk must be')
   })
 
-  it('rejects --effort with invalid value', () => {
-    const result = runCli(['dummy.js', '--effort', 'low'])
-    expect(result.exitCode).toBe(1)
-    expect(result.stderr).toContain("must be 'medium', 'high', or 'xhigh'")
-  })
-
-  it('accepts --effort medium', () => {
-    const result = runCli(['dummy.js', '--effort', 'medium'])
-    expect(result.stderr).not.toContain('--effort must be')
-  })
-
-  it('accepts --effort high', () => {
-    const result = runCli(['dummy.js', '--effort', 'high'])
-    expect(result.stderr).not.toContain('--effort must be')
-  })
-
-  it('accepts --effort xhigh', () => {
-    const result = runCli(['dummy.js', '--effort', 'xhigh'])
-    expect(result.stderr).not.toContain('--effort must be')
-  })
-
   it('accepts --verbose flag', () => {
     const result = runCli(['dummy.js', '--verbose'])
     // Will fail because dummy.js doesn't exist, but should NOT fail on --verbose

@@ -1,5 +1,4 @@
 import type { SdkName } from './core/sdk.js'
-import type { EffortLevel } from './core/sdk-types.js'
 import type { Result } from './utils/result.js'
 
 // ── Script-facing types (globals injected into workflow scripts) ─────
@@ -13,8 +12,6 @@ export interface AgentOpts {
   model?: string
   /** Max retry attempts for transient errors (429, network). Default: 2 */
   maxRetries?: number
-  /** Reasoning effort level: 'medium' | 'high' | 'xhigh' */
-  effort?: EffortLevel
 }
 
 /** The `budget` object exposed as a script global */
@@ -38,7 +35,6 @@ export type EngineEvent =
       sdk?:
         | {
             model?: string | undefined
-            effort?: string | undefined
             permissionMode?: string | undefined
           }
         | undefined
@@ -89,8 +85,6 @@ export interface EngineOptions {
   sdk?: SdkName
   /** Timeout in ms for every agent call in this workflow (default: 300000). Must be a positive integer. */
   agentTimeoutMs?: number
-  /** Default reasoning effort level for all agents */
-  effort?: EffortLevel
   /** AbortSignal to cancel the entire workflow */
   signal?: AbortSignal
 }

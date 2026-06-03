@@ -2,7 +2,6 @@ import type { Semaphore } from '../utils/semaphore.js'
 import type { BudgetTracker } from './budget.js'
 import type { EngineEventBus } from './events.js'
 import type { SdkProvider } from './sdk.js'
-import type { EffortLevel } from './sdk-types.js'
 import type { EngineOptions } from '../types.js'
 
 /** Resolve PermissionMode from EngineOptions (same local alias used in types.ts) */
@@ -16,7 +15,6 @@ export interface AgentContext {
   sdk: SdkProvider
   cwd?: string | undefined
   permissionMode?: PermissionMode | undefined
-  effort?: EffortLevel | undefined
   signal?: AbortSignal | undefined
   agentTimeoutMs?: number | undefined
 }

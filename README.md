@@ -110,7 +110,6 @@ batonjs [options] <script>
 | `--cwd <dir>` | Working directory for agents | `.` |
 | `--sdk <name>` | `anthropic`, `codebuddy`, or `codex` | `anthropic` |
 | `--timeout <minutes>` | Per-agent timeout in minutes | 5 |
-| `--effort <level>` | Reasoning effort: `medium`, `high`, or `xhigh` | SDK default |
 | `-h, --help` | Show help | — |
 
 ---
@@ -155,7 +154,6 @@ Options:
 | `phase` | Assign to a phase group |
 | `schema` | JSON Schema for structured output |
 | `model` | Override model for this agent |
-| `effort` | Reasoning effort: `medium` / `high` / `xhigh` |
 
 ---
 
@@ -224,7 +222,7 @@ The workflow runtime that loads a script, injects globals, and orchestrates exec
 | Export | Description |
 |--------|-------------|
 | **`Engine`** | Load a script and run it inside a sandboxed workflow environment. |
-| **`EngineOptions`** | Configuration for `new Engine()`: `scriptPath`, `args`, `maxBudgetUsd`, `maxConcurrency`, `cwd`, `permissionMode`, `sdk`, `agentTimeoutMs`, `effort`, `signal`. |
+| **`EngineOptions`** | Configuration for `new Engine()`: `scriptPath`, `args`, `maxBudgetUsd`, `maxConcurrency`, `cwd`, `permissionMode`, `sdk`, `agentTimeoutMs`, `signal`. |
 | **`EngineRunResult`** | Return type of `engine.run()` — always a `Result<EngineResult, Error>`. |
 | **`EngineResult`** | Successful run payload: `{ success, result, totalCostUsd, durationMs, meta }`. |
 
@@ -352,7 +350,7 @@ const budget = new BudgetTracker(10.0); // $10 USD cap
 ### API Reference
 
 - **[API Entry Point](src/index.ts)** — Public API: Engine class, Result type, SDK provider, event bus, concurrency primitives, budget tracker
-- **[CLI Reference](src/cli.ts)** — Command-line interface options: --args, --budget, --concurrency, --cwd, --sdk, --timeout, --effort
+- **[CLI Reference](src/cli.ts)** — Command-line interface options: --args, --budget, --concurrency, --cwd, --sdk, --timeout
 - **[Script Globals](src/types.ts)** — Workflow script globals: agent(), parallel(), pipeline(), phase(), log(), budget, args, workflow()
 - **[Engine Events](src/types.ts)** — Discriminated union event types emitted during workflow execution for observability
 - **[SDK Adapters](src/core/sdk.ts)** — Pluggable SDK backends: Anthropic Claude Agent SDK, Tencent Codebuddy Agent SDK, OpenAI Codex SDK

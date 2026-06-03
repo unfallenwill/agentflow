@@ -14,10 +14,6 @@ cli
   .option('--cwd <dir>', 'Working directory for agents (default: .)')
   .option('--sdk <name>', "SDK backend: 'anthropic' (default), 'codebuddy', or 'codex'")
   .option('--timeout <minutes>', 'Agent call timeout in minutes (default: 5)')
-  .option(
-    '--effort <level>',
-    "Reasoning effort: 'medium', 'high', or 'xhigh' (default: SDK-specific)",
-  )
   .option('--verbose', 'Show debug-level output (agent internals)')
   .option('--quiet', 'Suppress progress output (only errors)')
   .example('batonjs ./workflows/demo.js')
@@ -25,7 +21,6 @@ cli
   .example('batonjs --args \'{"target": "src/"}\' ./workflows/demo.js')
   .example('batonjs --budget 5.0 --concurrency 5 ./workflows/demo.js')
   .example('batonjs --timeout 5 ./workflows/demo.js')
-  .example('batonjs --sdk codex --effort high ./workflows/demo.js')
   .example('batonjs --verbose ./workflows/demo.js')
   .action((script: string | undefined, options: Record<string, unknown>) => {
     if (script === undefined) {
@@ -90,17 +85,6 @@ cli
       sdk = sdkName
     }
 
-    // --effort: validate level
-    let effort: 'medium' | 'high' | 'xhigh' | undefined
-    if (options['effort'] !== undefined) {
-      const effortLevel = String(options['effort'])
-      if (effortLevel !== 'medium' && effortLevel !== 'high' && effortLevel !== 'xhigh') {
-        consola.fatal(`--effort must be 'medium', 'high', or 'xhigh', got: ${effortLevel}`)
-        process.exit(1)
-      }
-      effort = effortLevel
-    }
-
     const engineOpts: EngineOptions = {
       scriptPath: script,
       cwd: typeof options['cwd'] === 'string' ? options['cwd'] : process.cwd(),
@@ -109,7 +93,6 @@ cli
     if (maxBudgetUsd !== undefined) engineOpts.maxBudgetUsd = maxBudgetUsd
     if (maxConcurrency !== undefined) engineOpts.maxConcurrency = maxConcurrency
     if (sdk !== undefined) engineOpts.sdk = sdk
-    if (effort !== undefined) engineOpts.effort = effort
     if (options['timeout'] !== undefined) {
       const minutes = parseFloat(String(options['timeout']))
       if (Number.isNaN(minutes) || minutes <= 0) {
@@ -137,7 +120,6 @@ cli
         case 'agent_start': {
           const parts: string[] = []
           if (event.sdk?.model) parts.push(`model: ${event.sdk.model}`)
-          if (event.sdk?.effort) parts.push(`effort: ${event.sdk.effort}`)
           if (event.sdk?.permissionMode && event.sdk.permissionMode !== 'bypassPermissions') {
             parts.push(`permission: ${event.sdk.permissionMode}`)
           }

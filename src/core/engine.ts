@@ -163,7 +163,6 @@ export class Engine {
           sdk,
           cwd: this.opts.cwd,
           permissionMode: this.opts.permissionMode,
-          effort: this.opts.effort,
           signal: this.opts.signal,
           agentTimeoutMs: this.opts.agentTimeoutMs,
         }),
@@ -225,7 +224,6 @@ export class Engine {
     const childOpts: EngineOptions = { scriptPath, args: childArgs }
     if (this.opts.cwd !== undefined) childOpts.cwd = this.opts.cwd
     if (this.opts.permissionMode !== undefined) childOpts.permissionMode = this.opts.permissionMode
-    if (this.opts.effort !== undefined) childOpts.effort = this.opts.effort
     if (this.opts.signal !== undefined) childOpts.signal = this.opts.signal
     if (this.opts.agentTimeoutMs !== undefined) childOpts.agentTimeoutMs = this.opts.agentTimeoutMs
 

@@ -543,7 +543,6 @@ describe('executeAgent', () => {
       phase: 'build',
       sdk: {
         model: undefined,
-        effort: undefined,
         permissionMode: 'bypassPermissions',
       },
     })

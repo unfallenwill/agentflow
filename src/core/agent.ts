@@ -184,12 +184,6 @@ export async function executeAgent<T = unknown>(
       sdkOpts.model = opts.model
     }
 
-    if (opts?.effort !== undefined) {
-      sdkOpts.effort = opts.effort
-    } else if (ctx.effort !== undefined) {
-      sdkOpts.effort = ctx.effort
-    }
-
     if (ctx.cwd !== undefined) {
       sdkOpts.cwd = ctx.cwd
     }
@@ -201,7 +195,6 @@ export async function executeAgent<T = unknown>(
       phase,
       sdk: {
         model: sdkOpts.model,
-        effort: sdkOpts.effort,
         permissionMode: sdkOpts.permissionMode,
       },
     })
