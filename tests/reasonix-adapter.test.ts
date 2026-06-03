@@ -199,10 +199,12 @@ describe('extractJson', () => {
     expect(extractJson(raw)).toBe('{"ideas":[]}')
   })
 
-  it('finds the first valid JSON object when multiple exist', () => {
-    const raw = 'prefix {"a":1} middle {"b":2} suffix'
+  it('returns the longest JSON when multiple exist (thinking may contain small JSON)', () => {
+    const raw =
+      'prefix {"a":1} middle {"bugs":[{"description":"real bug","file":"x.ts","severity":"high","reproduction":"step 1"}]} suffix'
     const result = extractJson(raw)
-    expect(result).toBe('{"a":1}')
+    expect(result).not.toBeNull()
+    expect(JSON.parse(result!)).toHaveProperty('bugs')
   })
 
   it('returns null when no JSON found', () => {
