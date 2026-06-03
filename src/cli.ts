@@ -129,7 +129,7 @@ cli
           consola.start(event.meta?.name ?? script)
           break
         case 'phase':
-          consola.info(`📍 ${event.title}`)
+          consola.info(event.title)
           break
         case 'log':
           consola.log(event.message)
