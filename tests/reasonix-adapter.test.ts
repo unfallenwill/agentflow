@@ -1,6 +1,7 @@
 import { describe, it, expect, afterAll } from 'vitest'
 import {
   buildArgs,
+  cleanOutput,
   parseMetrics,
   resolvePricing,
   estimateCostFromTokens,
@@ -141,5 +142,46 @@ describe('parseMetrics', () => {
     writeFileSync(path, 'not json')
     const result = parseMetrics(path)
     expect(result).toEqual({})
+  })
+})
+
+// ── cleanOutput ────────────────────────────────────────────────────────
+
+describe('cleanOutput', () => {
+  it('strips ANSI escape codes', () => {
+    const raw = '\u001b[2m  ▎ thinking\u001b[0m\nHello, World!'
+    expect(cleanOutput(raw)).toBe('Hello, World!')
+  })
+
+  it('strips trailing token stats line', () => {
+    const raw =
+      'Hello!\n  · 11067 tok · in 11028 (11008 cached / 20 new) · out 39 (19 reasoning) · ¥0.0003'
+    expect(cleanOutput(raw)).toBe('Hello!')
+  })
+
+  it('strips both ANSI thinking marker and token stats', () => {
+    const raw =
+      '\u001b[2m  ▎ thinking\u001b[0m\nSilent code takes form,\nFrom thought to compiled logic—\nA bug sleeps, then wakes.\n  · 11067 tok · in 11028 (11008 cached / 20 new) · out 39 (19 reasoning) · ¥0.0003'
+    expect(cleanOutput(raw)).toBe(
+      'Silent code takes form,\nFrom thought to compiled logic—\nA bug sleeps, then wakes.',
+    )
+  })
+
+  it('returns clean text unchanged', () => {
+    expect(cleanOutput('Just plain text')).toBe('Just plain text')
+  })
+
+  it('handles empty string', () => {
+    expect(cleanOutput('')).toBe('')
+  })
+
+  it('preserves multi-line content', () => {
+    const raw = 'line 1\nline 2\nline 3'
+    expect(cleanOutput(raw)).toBe('line 1\nline 2\nline 3')
+  })
+
+  it('strips token stats with USD currency', () => {
+    const raw = 'Result text\n  · 500 tok · in 400 (300 cached / 100 new) · out 100 · $0.0020'
+    expect(cleanOutput(raw)).toBe('Result text')
   })
 })

@@ -106,6 +106,34 @@ export function buildArgs(prompt: string, options: SdkQueryOptions, metricsPath:
   return args
 }
 
+// ── Output cleaning ───────────────────────────────────────────────────
+
+// Strip ANSI escape sequences (color codes, dim/bold, etc.)
+const ANSI_RE = /\x1b\[[0-9;]*m/g
+
+// Trailing token-usage line: "  · 11067 tok · in 11028 (11008 cached / 20 new) · out 39 (19 reasoning) · ¥0.0003"
+const TOKEN_STATS_RE = /\n?\s*·\s*\d+\s*tok\s*·\s*in\s+\d+.*(?:\$|¥)\d+\.\d+.*$/
+
+// Leading thinking marker: "  ▎ thinking\n"
+const THINKING_MARKER_RE = /^(?:\s*▎\s*thinking\s*\n?)+/
+
+/**
+ * Clean reasonix stdout to extract the pure response text.
+ *
+ * Reasonix appends ANSI-colored thinking markers and a token-usage
+ * summary line to stdout. This strips them so batonjs gets clean text.
+ */
+export function cleanOutput(raw: string): string {
+  let text = raw.trim()
+  // Strip ANSI escape codes first
+  text = text.replace(ANSI_RE, '')
+  // Remove trailing token stats line
+  text = text.replace(TOKEN_STATS_RE, '')
+  // Remove leading "thinking" marker lines
+  text = text.replace(THINKING_MARKER_RE, '')
+  return text.trim()
+}
+
 // ── Metrics parsing ───────────────────────────────────────────────────
 
 /** Parse the metrics JSON file written by `reasonix run --metrics`. */
@@ -230,8 +258,8 @@ export async function createReasonixAdapter(): Promise<SdkProvider> {
           return
         }
 
-        // Success
-        const resultText = stdout.trim()
+        // Success — clean reasonix output
+        const resultText = cleanOutput(stdout)
         let structuredOutput: unknown = undefined
 
         if (hasSchema) {
