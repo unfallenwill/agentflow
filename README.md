@@ -1,7 +1,7 @@
 <p align="center">
   <img src="./assets/brand/batonjs-logo.svg" alt="BatonJS" width="560">
 </p>
-<!-- Lightweight TypeScript workflow engine that turns JS/TS scripts into AI agent pipelines with pluggable Claude, CodeBuddy, and Codex SDK backends. -->
+<!-- Lightweight TypeScript workflow engine that turns JS/TS scripts into AI agent pipelines with pluggable Claude, CodeBuddy, Codex, and Reasonix SDK backends. -->
 
 # BatonJS
 
@@ -10,7 +10,7 @@
 [![Node.js >=18](https://img.shields.io/node/v/batonjs.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6.svg)](https://www.typescriptlang.org/)
 
-BatonJS lets you write multi-agent AI workflows as plain async JavaScript scripts, with simple globals like `agent()`, `parallel()`, and `pipeline()` that handle concurrency, budgeting, retries, and structured output validation automatically. It's SDK-agnostic out of the box, supporting Anthropic Claude, Tencent CodeBuddy, and OpenAI Codex through pluggable adapters — swap backends without rewriting your workflows. Whether you're running a one-off automation or a production pipeline, BatonJS gives you deterministic control flow with the ergonomics of a script and the reliability of an engine.
+BatonJS lets you write multi-agent AI workflows as plain async JavaScript scripts, with simple globals like `agent()`, `parallel()`, and `pipeline()` that handle concurrency, budgeting, retries, and structured output validation automatically. It's SDK-agnostic out of the box, supporting Anthropic Claude, Tencent CodeBuddy, OpenAI Codex, and Reasonix through pluggable adapters — swap backends without rewriting your workflows. Whether you're running a one-off automation or a production pipeline, BatonJS gives you deterministic control flow with the ergonomics of a script and the reliability of an engine.
 
 ---
 
@@ -18,7 +18,7 @@ BatonJS lets you write multi-agent AI workflows as plain async JavaScript script
 
 Building multi-agent AI workflows shouldn't mean wrestling with orchestration boilerplate. BatonJS gives you **plain async JavaScript/TypeScript** with a small set of script globals — the engine handles the rest.
 
-- ✅ **SDK-agnostic adapters** — Pluggable adapters for Anthropic Claude, Tencent CodeBuddy, and OpenAI Codex. Swap providers without rewriting workflow logic; verify by checking `src/adapters/` for each concrete implementation.
+- ✅ **SDK-agnostic adapters** — Pluggable adapters for Anthropic Claude, Tencent CodeBuddy, OpenAI Codex, and Reasonix. Swap providers without rewriting workflow logic; verify by checking `src/adapters/` for each concrete implementation.
 
 - ✅ **Six script globals, zero boilerplate** — `agent()`, `parallel()`, `pipeline()`, `phase()`, `log()`, and `budget` are all you need. Write standard `async`/`await` code; no class inheritance, decorators, or DSL to learn.
 
@@ -92,6 +92,7 @@ Switch to a different SDK backend:
 ```bash
 batonjs --sdk codex ./workflow.js
 batonjs --sdk codebuddy ./workflow.js
+batonjs --sdk reasonix ./workflow.js
 ```
 
 ---
@@ -108,7 +109,7 @@ batonjs [options] <script>
 | `--budget <usd>` | Max spend in USD | unlimited |
 | `--concurrency <n>` | Max concurrent agents | 2 |
 | `--cwd <dir>` | Working directory for agents | `.` |
-| `--sdk <name>` | `anthropic`, `codebuddy`, or `codex` | `anthropic` |
+| `--sdk <name>` | `anthropic`, `codebuddy`, `codex`, or `reasonix` | `anthropic` |
 | `--timeout <minutes>` | Per-agent timeout in minutes | 5 |
 | `-h, --help` | Show help | — |
 
@@ -192,7 +193,7 @@ import { Engine } from 'batonjs'
 
 const engine = new Engine({
   scriptPath: './workflow.js',
-  sdk: 'anthropic',       // or 'codebuddy' or 'codex'
+  sdk: 'anthropic',       // or 'codebuddy', 'codex', or 'reasonix'
   maxBudgetUsd: 2.0,
   maxConcurrency: 5,
 })
@@ -259,7 +260,7 @@ Pluggable backends that translate BatonJS calls into provider-specific SDK opera
 | Export | Description |
 |--------|-------------|
 | **`createSdkProvider`** | Factory — returns an `SdkProvider` for a given backend name. |
-| **`SdkName`** | Union: `'anthropic' \| 'codebuddy' \| 'codex'`. |
+| **`SdkName`** | Union: `'anthropic' \| 'codebuddy' \| 'codex' \| 'reasonix'`. |
 | **`SdkProvider`** | Contract: `{ query(options): SdkQueryHandle }`. |
 | **`SdkQueryOptions`** | Options for a query call: `permissionMode`, `abortController`, `outputFormat`, `model`, `cwd`, `maxBudgetUsd`, `effort`. |
 | **`SdkQueryHandle`** | Async-iterable handle with `interrupt()` and `return()` cleanup. |
@@ -336,6 +337,7 @@ const budget = new BudgetTracker(10.0); // $10 USD cap
 | Anthropic Claude | `anthropic` (default) | `@anthropic-ai/claude-agent-sdk` |
 | Tencent CodeBuddy | `codebuddy` | `@tencent-ai/agent-sdk` |
 | OpenAI Codex | `codex` | `@openai/codex-sdk` |
+| Reasonix | `reasonix` | CLI binary (`reasonix run`) |
 
 ---
 
@@ -353,7 +355,7 @@ const budget = new BudgetTracker(10.0); // $10 USD cap
 - **[CLI Reference](src/cli.ts)** — Command-line interface options: --args, --budget, --concurrency, --cwd, --sdk, --timeout
 - **[Script Globals](src/types.ts)** — Workflow script globals: agent(), parallel(), pipeline(), phase(), log(), budget, args, workflow()
 - **[Engine Events](src/types.ts)** — Discriminated union event types emitted during workflow execution for observability
-- **[SDK Adapters](src/core/sdk.ts)** — Pluggable SDK backends: Anthropic Claude Agent SDK, Tencent Codebuddy Agent SDK, OpenAI Codex SDK
+- **[SDK Adapters](src/core/sdk.ts)** — Pluggable SDK backends: Anthropic Claude Agent SDK, Tencent Codebuddy Agent SDK, OpenAI Codex SDK, Reasonix
 
 ### Development
 
