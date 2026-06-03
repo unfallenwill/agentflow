@@ -112,10 +112,7 @@ export function buildArgs(prompt: string, options: SdkQueryOptions, metricsPath:
 const ANSI_RE = /\x1b\[[0-9;]*m/g
 
 // Trailing token-usage line: "  · 11067 tok · in 11028 (11008 cached / 20 new) · out 39 (19 reasoning) · ¥0.0003"
-const TOKEN_STATS_RE = /\n?\s*·\s*\d+\s*tok\s*·\s*in\s+\d+.*(?:\$|¥)\d+\.\d+.*$/
-
-// Leading thinking marker: "  ▎ thinking\n"
-const THINKING_MARKER_RE = /^(?:\s*▎\s*thinking\s*\n?)+/
+const TOKEN_STATS_RE = /\n?\s*·\s*\d+\s*tok\s*·\s*in\s+\d+.*?(?:\$|¥)\s*\d+\.\d+.*$/
 
 /**
  * Clean reasonix stdout to extract the pure response text.
@@ -129,9 +126,98 @@ export function cleanOutput(raw: string): string {
   text = text.replace(ANSI_RE, '')
   // Remove trailing token stats line
   text = text.replace(TOKEN_STATS_RE, '')
-  // Remove leading "thinking" marker lines
-  text = text.replace(THINKING_MARKER_RE, '')
   return text.trim()
+}
+
+/**
+ * Extract JSON from reasonix output that may contain thinking/reasoning
+ * text before the actual JSON response.
+ *
+ * Strategy: find the first '{' or '[' in the text, match its balanced
+ * brackets, and try JSON.parse. If that fails, advance past it and
+ * try the next opener.
+ */
+export function extractJson(text: string): string | null {
+  // Try the full text first (fast path)
+  const trimmed = text.trim()
+  try {
+    JSON.parse(trimmed)
+    return trimmed
+  } catch {
+    // continue
+  }
+
+  // Try stripping markdown fences first
+  const stripped = trimmed
+    .replace(/^```(?:json)?\s*\n?/i, '')
+    .replace(/\n?```\s*$/, '')
+    .trim()
+  try {
+    JSON.parse(stripped)
+    return stripped
+  } catch {
+    // continue
+  }
+
+  // Find JSON inside markdown fences
+  const fenceMatch = text.match(/```(?:json)?\s*\n([\s\S]*?)\n```/)
+  if (fenceMatch?.[1]) {
+    try {
+      JSON.parse(fenceMatch[1])
+      return fenceMatch[1]
+    } catch {
+      // continue
+    }
+  }
+
+  // Scan forward: find each '{' or '[', match balanced brackets, try parse
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (ch !== '{' && ch !== '[') continue
+
+    const open = ch
+    const close = open === '{' ? '}' : ']'
+    let depth = 0
+    let inStr = false
+    let esc = false
+    let endIdx = -1
+
+    for (let j = i; j < text.length; j++) {
+      const c = text[j]!
+      if (esc) {
+        esc = false
+        continue
+      }
+      if (c === '\\' && inStr) {
+        esc = true
+        continue
+      }
+      if (c === '"') {
+        inStr = !inStr
+        continue
+      }
+      if (inStr) continue
+      if (c === open) depth++
+      if (c === close) depth--
+      if (depth === 0) {
+        endIdx = j
+        break
+      }
+    }
+
+    if (endIdx === -1) continue
+
+    const candidate = text.slice(i, endIdx + 1)
+    try {
+      JSON.parse(candidate)
+      return candidate
+    } catch {
+      // Move past this opener and try the next one
+      continue
+    }
+  }
+
+  return null
 }
 
 // ── Metrics parsing ───────────────────────────────────────────────────
@@ -263,13 +349,9 @@ export async function createReasonixAdapter(): Promise<SdkProvider> {
         let structuredOutput: unknown = undefined
 
         if (hasSchema) {
-          try {
-            const stripped = resultText
-              .replace(/^```(?:json)?\s*\n?/i, '')
-              .replace(/\n?```\s*$/, '')
-            structuredOutput = JSON.parse(stripped)
-          } catch {
-            // structured_output stays undefined; agent.ts falls back to raw string
+          const jsonStr = extractJson(resultText)
+          if (jsonStr !== null) {
+            structuredOutput = JSON.parse(jsonStr)
           }
         }
 

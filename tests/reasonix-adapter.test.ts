@@ -2,6 +2,7 @@ import { describe, it, expect, afterAll } from 'vitest'
 import {
   buildArgs,
   cleanOutput,
+  extractJson,
   parseMetrics,
   resolvePricing,
   estimateCostFromTokens,
@@ -79,9 +80,6 @@ describe('estimateCostFromTokens', () => {
       cache_hit_tokens: 500_000,
     }
     const cost = estimateCostFromTokens(metrics, 'deepseek-v4-flash')
-    // non-cached input: 500k * 0.1/M = 0.05
-    // cached input: 500k * 0.025/M = 0.0125
-    // output: 1M * 0.4/M = 0.4
     expect(cost).toBeCloseTo(0.4625, 4)
   })
 
@@ -96,7 +94,6 @@ describe('estimateCostFromTokens', () => {
       completion_tokens: 0,
     }
     const cost = estimateCostFromTokens(metrics, undefined)
-    // 1M * 0.27/M = 0.27 (default pricing)
     expect(cost).toBeCloseTo(0.27, 4)
   })
 })
@@ -150,7 +147,7 @@ describe('parseMetrics', () => {
 describe('cleanOutput', () => {
   it('strips ANSI escape codes', () => {
     const raw = '\u001b[2m  ▎ thinking\u001b[0m\nHello, World!'
-    expect(cleanOutput(raw)).toBe('Hello, World!')
+    expect(cleanOutput(raw)).toBe('▎ thinking\nHello, World!')
   })
 
   it('strips trailing token stats line', () => {
@@ -159,12 +156,10 @@ describe('cleanOutput', () => {
     expect(cleanOutput(raw)).toBe('Hello!')
   })
 
-  it('strips both ANSI thinking marker and token stats', () => {
+  it('strips token stats from ANSI content', () => {
     const raw =
-      '\u001b[2m  ▎ thinking\u001b[0m\nSilent code takes form,\nFrom thought to compiled logic—\nA bug sleeps, then wakes.\n  · 11067 tok · in 11028 (11008 cached / 20 new) · out 39 (19 reasoning) · ¥0.0003'
-    expect(cleanOutput(raw)).toBe(
-      'Silent code takes form,\nFrom thought to compiled logic—\nA bug sleeps, then wakes.',
-    )
+      '\u001b[2m  ▎ thinking\u001b[0m\nSome text\n  · 11067 tok · in 11028 (11008 cached / 20 new) · out 39 (19 reasoning) · ¥0.0003'
+    expect(cleanOutput(raw)).toBe('▎ thinking\nSome text')
   })
 
   it('returns clean text unchanged', () => {
@@ -175,13 +170,57 @@ describe('cleanOutput', () => {
     expect(cleanOutput('')).toBe('')
   })
 
-  it('preserves multi-line content', () => {
-    const raw = 'line 1\nline 2\nline 3'
-    expect(cleanOutput(raw)).toBe('line 1\nline 2\nline 3')
-  })
-
   it('strips token stats with USD currency', () => {
     const raw = 'Result text\n  · 500 tok · in 400 (300 cached / 100 new) · out 100 · $0.0020'
     expect(cleanOutput(raw)).toBe('Result text')
+  })
+})
+
+// ── extractJson ────────────────────────────────────────────────────────
+
+describe('extractJson', () => {
+  it('returns the text as-is when it is already valid JSON', () => {
+    const json = '{"ideas":[{"name":"foo","description":"bar"}]}'
+    expect(extractJson(json)).toBe(json)
+  })
+
+  it('extracts JSON after thinking/reasoning text', () => {
+    const raw =
+      'Let me think about this...\nSome reasoning here.\n{"ideas":[{"name":"CodePilot","description":"AI pair programmer"}]}'
+    const result = extractJson(raw)
+    expect(result).not.toBeNull()
+    expect(JSON.parse(result!)).toEqual({
+      ideas: [{ name: 'CodePilot', description: 'AI pair programmer' }],
+    })
+  })
+
+  it('extracts JSON from markdown-fenced output', () => {
+    const raw = '```json\n{"ideas":[]}\n```'
+    expect(extractJson(raw)).toBe('{"ideas":[]}')
+  })
+
+  it('finds the first valid JSON object when multiple exist', () => {
+    const raw = 'prefix {"a":1} middle {"b":2} suffix'
+    const result = extractJson(raw)
+    expect(result).toBe('{"a":1}')
+  })
+
+  it('returns null when no JSON found', () => {
+    expect(extractJson('just plain text no json')).toBeNull()
+  })
+
+  it('handles JSON array', () => {
+    const raw = 'Some text\n[1, 2, 3]'
+    const result = extractJson(raw)
+    expect(result).toBe('[1, 2, 3]')
+  })
+
+  it('handles deeply nested JSON after reasoning', () => {
+    const raw =
+      '▎ thinking\nThe user wants ideas for...\n{"ideas":[{"name":"A","description":"desc A"},{"name":"B","description":"desc B"}]}'
+    const result = extractJson(raw)
+    expect(result).not.toBeNull()
+    const parsed = JSON.parse(result!)
+    expect(parsed.ideas).toHaveLength(2)
   })
 })
