@@ -95,6 +95,12 @@ export function createEventBridge(logger: ConsolaInstance): EngineEventHandler {
         const key = event.label ?? `agent-${agentCounter++}`
         const title = event.label ?? 'agent'
 
+        // Build subtitle from SDK params
+        const parts: string[] = []
+        if (event.sdk?.model) parts.push(event.sdk.model)
+        if (event.sdk?.effort) parts.push(`effort: ${event.sdk.effort}`)
+        const subtitle = parts.length > 0 ? ` (${parts.join(', ')})` : ''
+
         let taskResolve: () => void
         let taskReject: (error: Error) => void
         const taskPromise = new Promise<void>((resolve, reject) => {
@@ -109,7 +115,7 @@ export function createEventBridge(logger: ConsolaInstance): EngineEventHandler {
 
         if (rootListr) {
           rootListr.add({
-            title: `→ ${title}`,
+            title: `→ ${title}${subtitle}`,
             task: () => taskPromise,
           })
         }

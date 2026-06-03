@@ -31,7 +31,18 @@ export type EngineEvent =
   | { kind: 'workflow_error'; error: string }
   | { kind: 'phase'; title: string }
   | { kind: 'log'; message: string }
-  | { kind: 'agent_start'; label?: string | undefined; phase?: string | undefined }
+  | {
+      kind: 'agent_start'
+      label?: string | undefined
+      phase?: string | undefined
+      sdk?:
+        | {
+            model?: string | undefined
+            effort?: string | undefined
+            permissionMode?: string | undefined
+          }
+        | undefined
+    }
   | { kind: 'agent_end'; label?: string | undefined; cost: number; duration_ms: number }
   | { kind: 'agent_error'; label?: string | undefined; error: string }
   | { kind: 'budget_update'; spent: number; remaining: number | null }

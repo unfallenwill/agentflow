@@ -89,6 +89,33 @@ describe('createEventBridge', () => {
     expect(warnCalls).toHaveLength(0)
   })
 
+  it('handles agent_start with sdk params', () => {
+    const bridge = createEventBridge(logger)
+
+    bridge({ kind: 'workflow_start', meta: { name: 'test' } } as EngineEvent)
+    bridge({
+      kind: 'agent_start',
+      label: 'reviewer',
+      sdk: { model: 'claude-sonnet-4', effort: 'high', permissionMode: 'bypassPermissions' },
+    } as EngineEvent)
+    bridge({
+      kind: 'agent_end',
+      label: 'reviewer',
+      cost: 0.03,
+      duration_ms: 2000,
+    } as EngineEvent)
+    bridge({
+      kind: 'workflow_end',
+      success: true,
+      totalCost: 0.03,
+      duration_ms: 2000,
+    } as EngineEvent)
+
+    // Should not throw — sdk params are handled gracefully
+    const errorCalls = logger.calls.filter((c) => c.method === 'error')
+    expect(errorCalls).toHaveLength(0)
+  })
+
   it('handles agent_error via consola.warn when no pending task matches', () => {
     const bridge = createEventBridge(logger)
 

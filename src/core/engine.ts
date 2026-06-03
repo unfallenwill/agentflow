@@ -2,7 +2,6 @@ import { readFile } from 'node:fs/promises'
 import { resolve, extname, basename } from 'node:path'
 import { Script } from 'node:vm'
 import { transform as sucraseTransform } from 'sucrase'
-import { consola } from 'consola'
 import type {
   AgentOpts,
   EngineEventHandler,
@@ -116,10 +115,8 @@ export class Engine {
       this.shared !== undefined
         ? this.shared.sdk
         : await createSdkProvider(this.opts.sdk ?? 'anthropic')
-    consola.debug('Using SDK:', this.opts.sdk ?? 'anthropic')
 
     // 1. Load and parse script
-    consola.debug('Loading script:', this.opts.scriptPath)
     const loaded = await this.loadScript(this.opts.scriptPath)
     if (!loaded.ok) {
       return err(loaded.error)
@@ -225,7 +222,6 @@ export class Engine {
     }
 
     const scriptPath = typeof ref === 'string' ? ref : ref.scriptPath
-    consola.debug('Starting child workflow:', scriptPath)
 
     const childOpts: EngineOptions = { scriptPath, args: childArgs }
     if (this.opts.cwd !== undefined) childOpts.cwd = this.opts.cwd

@@ -550,6 +550,11 @@ describe('executeAgent', () => {
       kind: 'agent_start',
       label: 'my-agent',
       phase: 'build',
+      sdk: {
+        model: undefined,
+        effort: undefined,
+        permissionMode: 'bypassPermissions',
+      },
     })
     // Should also emit agent_end with the label
     const endEvent = events.find((e) => e.kind === 'agent_end')
