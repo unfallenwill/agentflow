@@ -301,23 +301,14 @@ describe('executeAgent', () => {
 
   // ── (j) Model from opts ──────────────────────────────────────────
 
-  it('uses model from opts over defaultModel', async () => {
-    const ctx = makeContext({ defaultModel: 'default-model' })
+  it('uses model from opts when provided', async () => {
+    const ctx = makeContext({})
     await executeAgent('test', { model: 'opts-model' }, ctx)
 
     expect(capturedSdkOpts?.model).toBe('opts-model')
   })
 
-  // ── (k) Model from ctx.defaultModel ──────────────────────────────
-
-  it('falls back to ctx.defaultModel when opts has no model', async () => {
-    const ctx = makeContext({ defaultModel: 'ctx-model' })
-    await executeAgent('test', undefined, ctx)
-
-    expect(capturedSdkOpts?.model).toBe('ctx-model')
-  })
-
-  // ── (l) Signal already aborted ───────────────────────────────────
+  // ── (k) Signal already aborted ───────────────────────────────────
 
   it('returns null and emits agent_error when signal is already aborted', async () => {
     const bus = new EngineEventBus()

@@ -83,8 +83,6 @@ export interface EngineOptions {
   maxConcurrency?: number
   /** Working directory for agent sessions */
   cwd?: string
-  /** Default model if not specified in agent() opts */
-  defaultModel?: string
   /** Permission mode for all agent queries */
   permissionMode?: PermissionMode
   /** SDK backend to use. Default: 'anthropic' */

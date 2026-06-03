@@ -162,7 +162,6 @@ export class Engine {
           bus: this.bus,
           sdk,
           cwd: this.opts.cwd,
-          defaultModel: this.opts.defaultModel,
           permissionMode: this.opts.permissionMode,
           effort: this.opts.effort,
           signal: this.opts.signal,
@@ -225,7 +224,6 @@ export class Engine {
 
     const childOpts: EngineOptions = { scriptPath, args: childArgs }
     if (this.opts.cwd !== undefined) childOpts.cwd = this.opts.cwd
-    if (this.opts.defaultModel !== undefined) childOpts.defaultModel = this.opts.defaultModel
     if (this.opts.permissionMode !== undefined) childOpts.permissionMode = this.opts.permissionMode
     if (this.opts.effort !== undefined) childOpts.effort = this.opts.effort
     if (this.opts.signal !== undefined) childOpts.signal = this.opts.signal

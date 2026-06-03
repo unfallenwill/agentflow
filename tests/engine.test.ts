@@ -453,7 +453,7 @@ return childResult
     )
   })
 
-  it('forwards cwd, defaultModel, and permissionMode to child workflow', async () => {
+  it('forwards cwd and permissionMode to child workflow', async () => {
     await withScripts(
       [
         {
@@ -481,7 +481,6 @@ return childResult
         const engine = new Engine({
           scriptPath: paths['parent.js'],
           cwd: TMP,
-          defaultModel: 'test-model',
           permissionMode: 'bypassPermissions',
         })
         const result = await engine.run()

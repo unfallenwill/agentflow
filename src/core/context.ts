@@ -15,7 +15,6 @@ export interface AgentContext {
   bus: EngineEventBus
   sdk: SdkProvider
   cwd?: string | undefined
-  defaultModel?: string | undefined
   permissionMode?: PermissionMode | undefined
   effort?: EffortLevel | undefined
   signal?: AbortSignal | undefined
