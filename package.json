@@ -1,6 +1,6 @@
 {
   "name": "batonjs",
-  "version": "0.0.51",
+  "version": "0.0.52",
   "description": "A lightweight workflow engine that orchestrates AI agents via pluggable SDK backends",
   "keywords": [
     "workflow",
