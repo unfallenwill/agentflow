@@ -76,7 +76,6 @@
     "cac": "^7.0.0",
     "consola": "^3.4.2",
     "json5": "^2.2.3",
-    "listr2": "^10.2.1",
     "sucrase": "^3.35.1"
   },
   "devDependencies": {

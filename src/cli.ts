@@ -3,7 +3,6 @@ import { cac } from 'cac'
 import { consola } from 'consola'
 import { Engine } from './index.js'
 import type { EngineOptions, SdkName } from './index.js'
-import { createEventBridge } from './cli/bridge.js'
 
 const cli = cac('batonjs')
 
@@ -124,9 +123,64 @@ cli
 
     const engine = new Engine(engineOpts)
 
-    // Subscribe engine events to the listr2 bridge
-    const bridge = createEventBridge(consola)
-    engine.on(bridge)
+    engine.on((event) => {
+      switch (event.kind) {
+        case 'workflow_start':
+          consola.start(event.meta?.name ?? script)
+          break
+        case 'phase':
+          consola.info(`📍 ${event.title}`)
+          break
+        case 'log':
+          consola.log(event.message)
+          break
+        case 'agent_start': {
+          const parts: string[] = []
+          if (event.sdk?.model) parts.push(`model: ${event.sdk.model}`)
+          if (event.sdk?.effort) parts.push(`effort: ${event.sdk.effort}`)
+          if (event.sdk?.permissionMode && event.sdk.permissionMode !== 'bypassPermissions') {
+            parts.push(`permission: ${event.sdk.permissionMode}`)
+          }
+          const label = event.label ? ` "${event.label}"` : ''
+          if (parts.length > 0) {
+            consola.info(`agent${label} — ${parts.join(', ')}`)
+          }
+          break
+        }
+        case 'agent_end':
+          consola.success(
+            `${event.label ?? 'agent'} ($${event.cost.toFixed(4)}, ${(event.duration_ms / 1000).toFixed(1)}s)`,
+          )
+          break
+        case 'agent_error':
+          consola.fail(`${event.label ?? 'agent'}: ${event.error.slice(0, 100)}`)
+          break
+        case 'budget_update':
+          consola.log(`💰 $${event.spent.toFixed(4)} spent`)
+          break
+        case 'workflow_end':
+          consola.log(
+            `${event.success ? '✅' : '❌'} $${event.totalCost.toFixed(4)} | ${(event.duration_ms / 1000).toFixed(1)}s`,
+          )
+          break
+        case 'workflow_error':
+          // Error is surfaced via run() result.
+          break
+        case 'pipeline_error':
+          consola.warn(
+            `pipeline error at item ${event.index}${event.stage !== undefined ? ` stage ${event.stage}` : ''}: ${event.error}`,
+          )
+          break
+        case 'parallel_error':
+          consola.warn(`parallel error at thunk ${event.index}: ${event.error}`)
+          break
+        default: {
+          const _exhaustive: never = event
+          void _exhaustive
+          break
+        }
+      }
+    })
 
     engine.run().then((result) => {
       if (result.ok) {
